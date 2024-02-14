@@ -83,7 +83,34 @@ When a request was made to Lantern's `run_code` endpoint, the corresponding meth
 Glimpse takes advantage of FastAPI's support for async Python to compile and execute code processing requests in "parallel" (thanks, GIL).
 </details>
 
+## API Docs
+
+`/run-code-pool`
+
+Runs untrusted code using a Docker Container pool and returns the output.
+
+#### Input: 
+
+```json
+{
+    "language": str,  // py, js, java, cpp, c, go
+    "code": str,  // Stringified code block
+    "input": str,  // User input (for print() statements)
+}
+```
+
+#### Output:
+
+```json
+{
+    "output": str, // Stringified output of the code snippet
+    "error": str, // Any errors that occured during program compilation or execution
+    "language": str, // same as input
+    "info": str, // Command to get version information from server
+}
+```
+
 ## Limitations
 
 Glimpse is not meant to be used to run I/O operations in most languages. If one were to try to run the command `input()` with Glimpse, it would eventually timeout.
-All I/O interactions must be spoofed on the client-side and inputs are passed as a value array once code execution can continue.
+All I/O interactions must be spoofed on the client-side, and passed to the endpoint using the `input` body param.
