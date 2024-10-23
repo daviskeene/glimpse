@@ -25,7 +25,7 @@ const Header = () => {
               </Button>
             </Link>
             <a
-              href="https://github.com/yourusername/glimpse"
+              href="https://github.com/daviskeene/glimpse"
               target="_blank"
               rel="noopener noreferrer"
             >

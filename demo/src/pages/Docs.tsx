@@ -243,10 +243,10 @@ const DocsPage = () => {
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
-  
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         <div className="lg:grid lg:grid-cols-4 lg:gap-8">
           {/* Side Navigation */}
           <div className="hidden lg:block">

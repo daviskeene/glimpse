@@ -14,7 +14,7 @@ const Layout = ({ children, className }: LayoutProps) => {
 
       <main
         className={cn(
-          "flex-grow w-full max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8",
+          "flex-grow w-full max-w-8xl mx-auto px-4 py-6 sm:px-6 lg:px-8",
           className,
         )}
       >
@@ -29,7 +29,7 @@ const Layout = ({ children, className }: LayoutProps) => {
             </p>
             <div className="flex space-x-6">
               <a
-                href="https://github.com/yourusername/glimpse"
+                href="https://github.com/daviskeene/glimpse"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-400 hover:text-gray-500"
