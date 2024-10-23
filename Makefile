@@ -14,7 +14,7 @@ check_docker:
 install_docker:
 	@echo 'Installing docker...'; \
 	curl -fsSL https://get.docker.com -o get-docker.sh; \
-	sudo sh get-docker.sh; \
+	sh get-docker.sh; \
 	rm get-docker.sh
 
 create_env:
