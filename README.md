@@ -33,7 +33,7 @@ fetch('https://glimpse-7eir.onrender.com/run-code-lambda', {
 ```
 
 You'll get back something like this:
-```json
+```javascript
 {
   "statusCode": 200,
   "body": {
@@ -103,10 +103,9 @@ Feel free to open issues or submit PRs! This is a fun project and I'm always loo
 ## Credits
 
 Built with:
-- FastAPI
+- FastAPI + Python3
 - AWS Lambda (for the serverless goodness)
 - Docker (for the v1 container pool magic)
-- A lot of ☕
 
 ## License
 
