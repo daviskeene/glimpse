@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: build check_docker install_docker create_env install_requirements docker_build
+.PHONY: build check_docker install_docker create_env install_requirements docker_build zip_lambda
 
 build: check_docker create_env install_requirements docker_build
 	@echo "Setup complete!"
@@ -27,3 +27,7 @@ install_requirements:
 
 docker_build:
 	@docker build -t glimpse .
+
+zip_lambda:
+	@pip install -r requirements.txt -t .
+	zip -r lambda_function.zip .

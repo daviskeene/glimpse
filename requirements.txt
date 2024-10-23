@@ -5,3 +5,4 @@ slowapi
 docker
 motor
 python-dotenv
+boto3
