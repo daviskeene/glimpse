@@ -1,0 +1,24 @@
+# render.yaml
+services:
+  - type: web
+    name: glimpse-dind
+    env: docker
+    region: oregon
+    plan: standard
+    dockerfilePath: ./Dockerfile-dind
+    dockerCommand: sh -c "dockerd & sleep 5 && uvicorn api:app --host 0.0.0.0 --port $PORT --workers 4"
+    disk:
+      name: docker-data
+      mountPath: /var/lib/docker
+      sizeGB: 10
+    envVars:
+      - key: DOCKER_HOST
+        value: unix:///var/run/docker.sock
+      - key: DOCKER_TLS_CERTDIR
+        value: ""
+      - key: PORT
+        value: 8080
+    healthCheckPath: /health
+    autoDeploy: false
+    numInstances: 1
+    privileged: true

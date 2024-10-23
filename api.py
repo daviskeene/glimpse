@@ -31,7 +31,7 @@ app.add_middleware(
 
 # Initialize the container pool
 container_pool = ContainerPool(
-    pool_size=2, image=os.getenv("DOCKER_IMAGE", "glimpse-ct")
+    pool_size=2, image=os.getenv("DOCKER_IMAGE", "glimpse")
 )
 
 # Rate limiting

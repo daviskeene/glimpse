@@ -1,0 +1,31 @@
+# Dockerfile-dind
+FROM docker:20.10-dind
+
+# Install dependencies in a single layer to reduce image size
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    g++ \
+    gcc \
+    nodejs \
+    go \
+    openjdk11
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
+
+# Copy the rest of the application
+COPY . .
+
+# Expose the port
+EXPOSE 8080
+
+# The actual command will come from render.yaml
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4"]
+
+# docker build --platform linux/amd64 -t dakeenekid/glimpse -f Dockerfile-dind .
+# docker push dakeenekid/glimpse:latest

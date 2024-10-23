@@ -14,16 +14,16 @@ check_docker:
 install_docker:
 	@echo 'Installing docker...'; \
 	curl -fsSL https://get.docker.com -o get-docker.sh; \
-	sh get-docker.sh; \
+	sudo sh get-docker.sh; \
 	rm get-docker.sh
 
 create_env:
 	@if [ ! -f .env ]; then \
-		echo "DOCKER_IMAGE=glimpse-ct" > .env; \
+		echo "DOCKER_IMAGE=glimpse" > .env; \
 	fi
 
 install_requirements:
 	@python3 -m pip install -r requirements.txt
 
 docker_build:
-	@docker build -t glimpse-ct .
+	@docker build -t glimpse .

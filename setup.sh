@@ -8,16 +8,16 @@ if ! [ -x "$(command -v docker)" ]; then
   sudo sh get-docker.sh
 fi
 
-# Check if .env file exists. If not, create it and put DOCKER_IMAGE="glimpse-ct" in it
+# Check if .env file exists. If not, create it and put DOCKER_IMAGE="glimpse" in it
 if [ ! -f .env ]; then
-  echo "DOCKER_IMAGE=glimpse-ct" > .env
+  echo "DOCKER_IMAGE=glimpse" > .env
 fi
 
 # Install necessary Python dependencies
 python3 -m pip install -r requirements.txt
 
 # Build docker image
-docker build -t glimpse-ct .
+docker build -t glimpse .
 
 # Done!
 echo "Setup complete!"
