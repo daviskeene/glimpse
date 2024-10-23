@@ -34,8 +34,9 @@ LANGUAGE_COMMANDS = {
     "go": {
         "execute": ["go", "run"],
         "file_ext": "go",
-    }
+    },
 }
+
 
 def lambda_handler(event, context):
     try:
@@ -47,7 +48,7 @@ def lambda_handler(event, context):
         if language not in LANGUAGE_COMMANDS:
             return {
                 "statusCode": 400,
-                "body": json.dumps({"error": f"Unsupported language: {language}"})
+                "body": json.dumps({"error": f"Unsupported language: {language}"}),
             }
 
         # Get language details
@@ -78,7 +79,9 @@ def lambda_handler(event, context):
             if compile_result.returncode != 0:
                 return {
                     "statusCode": 200,
-                    "body": json.dumps({"output": "", "error": compile_result.stderr.decode()})
+                    "body": json.dumps(
+                        {"output": "", "error": compile_result.stderr.decode()}
+                    ),
                 }
 
         # Prepare the execution command
@@ -108,16 +111,13 @@ def lambda_handler(event, context):
         if exec_process.returncode != 0:
             return {
                 "statusCode": 200,
-                "body": json.dumps({"output": "", "error": stderr.decode()})
+                "body": json.dumps({"output": "", "error": stderr.decode()}),
             }
 
         return {
             "statusCode": 200,
-            "body": json.dumps({"output": stdout.decode(), "error": ""})
+            "body": json.dumps({"output": stdout.decode(), "error": ""}),
         }
 
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}

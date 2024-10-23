@@ -26,8 +26,4 @@ install_requirements:
 	@python3 -m pip install -r requirements.txt
 
 docker_build:
-	@docker build -t glimpse .
-
-zip_lambda:
-	@pip install -r requirements.txt -t .
-	zip -r lambda_function.zip .
+	@docker build -t glimpse -f Dockerfiles/Dockerfile .

@@ -3,7 +3,6 @@ import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -30,16 +29,16 @@ app.add_middleware(
 )
 
 # Initialize the container pool
-container_pool = ContainerPool(
-    pool_size=2, image=os.getenv("DOCKER_IMAGE", "glimpse")
-)
+container_pool = ContainerPool(pool_size=2, image=os.getenv("DOCKER_IMAGE", "glimpse"))
 
 # Rate limiting
 limiter = Limiter(key_func=get_remote_address)
 
+
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request, exc):
     return PlainTextResponse(str("Rate limit exceeded!"), status_code=429)
+
 
 @app.on_event("startup")
 async def start_pool():
@@ -47,16 +46,19 @@ async def start_pool():
     container_pool.warm_up()
     pass
 
+
 @app.on_event("shutdown")
 async def clean_pool():
     # Clean out docker containers from container pool
     container_pool.shutdown_pool()
     pass
 
+
 class CodeIn(BaseModel):
     language: str
     code: str
     input: str = None
+
 
 @app.post("/run-code-local")
 async def run_code_endpoint(code_in: CodeIn):
@@ -84,6 +86,7 @@ async def run_code_endpoint(request: Request, code_in: CodeIn):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
+
 
 @app.get("/")
 async def root(request: Request):

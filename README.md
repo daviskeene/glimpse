@@ -1,116 +1,113 @@
 # Glimpse
 
-Glimpse is a microservice that allows for remote code execution, written in Python.
+A simple service that lets you run code through an API. Want to execute some Python or JavaScript without setting up a whole environment? Glimpse has got you covered! 🚀
 
-Current list of supported languages:
-- Java
-- C++
-- Python
-- C
-- JavaScript
-- GoLang
+## What is this?
 
-## Getting Started
+Glimpse is a service that takes code you send it and runs it in a safe, isolated environment. Think of it like running code on your computer, but in the cloud. It's perfect for:
 
-Glimpse is not yet deployed, but will be soon. In the meantime, you can spin it up yourself locally.
+- Building coding playgrounds
+- Running code examples in documentation
+- Testing quick code snippets
+- Teaching programming concepts
 
-1. Run the following setup script: `chmod +x setup.sh && ./setup.sh`. This will install all necessary Python dependencies and build the Docker image.
-2. To run the FastAPI app, use the following command: `python3 -m uvicorn api:app --host 0.0.0.0 --port 8000 --workers <int:num_workers>`.
-    - `num_workers` will decide the number of web workers that are running the API in parallel. When developing locally, no more than 2 are needed.
-3. Send a request to the endpoint like so:
+## Try it out!
+
+The service is running at `https://glimpse-7eir.onrender.com`. Here's a quick example:
 
 ```javascript
-fetch('<endpoint_url>/run-code-pool', {
-    method: 'POST',
-    headers: {
-        "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-        "language": "py", // also accepts "java", "js", "cpp", "c", "go"
-        "code": "print(\"Hello, world!\")",
-        "input": ""  // optional parameter
-    })
-}).then((resp) => resp.json())
-.then((data) => console.log(data));
+// Send some code to run
+fetch('https://glimpse-7eir.onrender.com/run-code-lambda', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    language: 'py',
+    code: 'print("Hello from Glimpse!")',
+    input: ''  // optional: for programs that need input
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data));
 ```
 
-Or use our friendly neighborhood cURL CLI tool:
+You'll get back something like this:
+```json
+{
+  "statusCode": 200,
+  "body": {
+    "output": "Hello from Glimpse!\n",
+    "error": null,
+    "executionTime": null  // not yet implemented
+  }
+}
+```
+
+## Setting it up yourself
+
+There are two ways to run Glimpse:
+
+### 1. AWS Lambda Mode (Recommended)
+
+This uses AWS Lambda to run the code (what the production version does). You'll need to:
+
+1. Create a `.env` file with your AWS credentials:
 
 ```bash
-curl -X POST '<endpoint_url>/run-code-pool' \
-    -H 'Content-Type: application/json' \
-    -d '{"language": "py", "code": "print(\"Hello, world!\")", "input": ""}'
+DOCKER_IMAGE=glimpse
+LAMBDA_FUNCTION_NAME=your_lambda_function
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_DEFAULT_REGION=your_region
 ```
 
-The output from the endpoint will be as follows:
+2. Follow the steps in [here](/docs/infra.markdown) to upload the image to ECR + deploy the lambda.
 
-```
-{
-    "output": "Hello, world!\n",
-    "error": "",
-    "language": "py",
-    "info": "python3 --version"
-}
+2. Run the server:
+
+```bash
+python3 -m uvicorn api-lambda:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## How It Works
+### 2. Docker Pool Mode
+This runs code in a pool of Docker containers. Simpler to set up, but needs more resources:
 
-Glimpse allows code to be executed via a web request. You can run code and display code results in environment like Node, in a React application, etc. It works by sending instructions to a Docker container about how to compile and/or execute code coming in, carrying out those instructions, and saving the result before replacing the code-contaminated container.
+1. Set up Docker (make sure the daemon is running) and run:
+```bash
+# Install dependencies and build the docker image
+make build
+# or
+./setup.sh
 
-<details>
-<summary>v2.</summary>
-
-The current iteration of Glimpse recognizes that untrusted code should not be ran outside of a containerized environment. What's more, code submissions should run in their own container.
-
-We now maintain a scalable container "pool" of pre-warmed containers that are all able to execute code in any of the supported languages. When a code submission is submitted via our endpoint, a few things happen:
-
-- A pre-warmed container is selected from the pool, and we create a record of that submission in the container.
-- That code file is executed in the container, and the output is recorded.
-- That container is discarded, and a new one takes its place.
-
-</details>
-
-<details>
-<summary>v1.</summary>
-
-The first iteration of Glimpse ran in a single Docker container, which has all the necessary software installed to compile and run files from supported languages.
-
-When a request was made to Lantern's `run_code` endpoint, the corresponding method `run_code` was called, and the following steps occurred in order:
-1. A submission file was generated with a unique UUID and the proper extension.
-2. A set of compilation and execution command line arguments were generated, instructing the container how to execute the `code` parameter that was passed in.
-3. The code was compiled (if a compilation step is necessary) and executed, and the resulting std_out and std_err streams were captured and returned as a Response.
-
-Glimpse takes advantage of FastAPI's support for async Python to compile and execute code processing requests in "parallel" (thanks, GIL).
-</details>
-
-## API Docs
-
-`/run-code-pool`
-
-Runs untrusted code using a Docker Container pool and returns the output.
-
-#### Input: 
-
-```json
-{
-    "language": str,  // py, js, java, cpp, c, go
-    "code": str,  // Stringified code block
-    "input": str,  // User input (for print() statements)
-}
+# Run the service
+python3 -m uvicorn api-docker:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-#### Output:
+## Good to know
 
-```json
-{
-    "output": str, // Stringified output of the code snippet
-    "error": str, // Any errors that occured during program compilation or execution
-    "language": str, // same as input
-    "info": str, // Command to get version information from server
-}
-```
+- Currently supports Python and JavaScript
+- Each request has a 30-second timeout
+- Rate limited to 1000 requests per hour per IP
+- Can't do file operations or network calls (for security reasons)
+- Need to provide input through the API (no interactive `input()` calls)
 
-## Limitations
+## But why?
 
-Glimpse is not meant to be used to run I/O operations in most languages. If one were to try to run the command `input()` with Glimpse, it would eventually timeout.
-All I/O interactions must be spoofed on the client-side, and passed to the endpoint using the `input` body param.
+Ever wanted to build something that needs to run user-submitted code? Maybe a coding tutorial website or a documentation playground? Glimpse makes that easy without having to worry about all the security and isolation stuff.
+
+## Want to help?
+
+Feel free to open issues or submit PRs! This is a fun project and I'm always looking to make it better.
+
+## Credits
+
+Built with:
+- FastAPI
+- AWS Lambda (for the serverless goodness)
+- Docker (for the v1 container pool magic)
+- A lot of ☕
+
+## License
+
+MIT License - do whatever you want with it! Just don't blame us if something goes wrong. 😉

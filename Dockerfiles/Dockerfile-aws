@@ -1,0 +1,25 @@
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.9
+
+# Install development tools and repositories
+RUN yum groupinstall -y "Development Tools" && \
+    yum update -y && \
+    yum install -y wget tar gzip
+
+# Install Node.js
+RUN curl -sL https://rpm.nodesource.com/setup_16.x | bash - && \
+    yum install -y nodejs
+
+# Install Amazon Corretto (Java)
+# RUN yum install -y java-11-amazon-corretto-devel
+
+# Install Go
+RUN wget https://go.dev/dl/go1.20.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.20.linux-amd64.tar.gz && \
+    rm go1.20.linux-amd64.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Copy the lambda function code
+COPY lambda_function.py ${LAMBDA_TASK_ROOT}
+
+# Command can be overwritten by providing a different command in the template directly.
+CMD [ "lambda_function.lambda_handler" ]
