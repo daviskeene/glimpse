@@ -1,7 +1,5 @@
-// Header.tsx
-import React from "react";
 import { Link } from "react-router-dom";
-import { Code2, Book, InfoIcon } from "lucide-react";
+import { Code2, Book } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const Header = () => {

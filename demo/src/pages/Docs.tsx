@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Code2, Server, Lock, Cpu, Box } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import CodeMirror from "@uiw/react-codemirror";
@@ -209,17 +209,6 @@ const APIReferenceSection = () => {
 
 const DocsPage = () => {
   const [activeSection, setActiveSection] = useState("overview");
-  const [isSmallScreen, setIsSmallScreen] = useState(false);
-
-  useEffect(() => {
-    const checkScreenSize = () => {
-      setIsSmallScreen(window.innerWidth < 1024);
-    };
-
-    checkScreenSize();
-    window.addEventListener("resize", checkScreenSize);
-    return () => window.removeEventListener("resize", checkScreenSize);
-  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -254,30 +243,7 @@ const DocsPage = () => {
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
-
-  const sampleAPICall = `fetch('https://glimpse-7eir.onrender.com/run-code-lambda', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    language: 'py',
-    code: 'print("Hello from Glimpse!")',
-    input: ''
-  })
-})
-.then(response => response.json())
-.then(data => console.log(data));`;
-
-  const sampleResponse = `{
-  "statusCode": 200,
-  "body": {
-    "output": "Hello from Glimpse!\n",
-    "error": null,
-    "executionTime": "0.245s"
-  }
-}`;
-
+  
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">

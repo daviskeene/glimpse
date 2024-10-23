@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from "react";
-import { Code2, Play, Terminal, RefreshCcw } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Code2, Play, Terminal } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -92,13 +92,6 @@ const CodePlayground = () => {
       setError("Failed to execute code. Please try again.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const loadHelloWorld = () => {
-    const selectedLang = languages.find((lang) => lang.value === language);
-    if (selectedLang) {
-      setCode(selectedLang.hello);
     }
   };
 
