@@ -4,13 +4,13 @@ services:
     name: glimpse-dind
     env: docker
     region: oregon
-    plan: standard
+    plan: starter
     dockerfilePath: ./Dockerfile-dind
-    dockerCommand: sh -c "dockerd & sleep 5 && uvicorn api:app --host 0.0.0.0 --port $PORT --workers 4"
+    dockerCommand: sh -c "dockerd & sleep 5 && uvicorn api:app --host 0.0.0.0 --port $PORT --workers 2"  # Reduced workers
     disk:
       name: docker-data
       mountPath: /var/lib/docker
-      sizeGB: 10
+      sizeGB: 1
     envVars:
       - key: DOCKER_HOST
         value: unix:///var/run/docker.sock
