@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: starter
     dockerfilePath: ./Dockerfile-dind
-    dockerCommand: sh -c "dockerd & sleep 5 && uvicorn api:app --host 0.0.0.0 --port $PORT --workers 2"  # Reduced workers
+    dockerCommand: uvicorn api:app --host 0.0.0.0 --port $PORT --workers 2
     disk:
       name: docker-data
       mountPath: /var/lib/docker
