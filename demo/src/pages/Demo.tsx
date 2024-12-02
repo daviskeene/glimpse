@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Code2, Play, Terminal } from "lucide-react";
+import { Code2, Play, Terminal, Copy } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -29,8 +29,15 @@ import { EditorView } from "@codemirror/view";
 const CodePlayground = () => {
   const [code, setCode] = useState('print("Hello, world!")');
   const [input, setInput] = useState("");
-  const [output, setOutput] = useState("");
-  const [error, setError] = useState("");
+  const [data, setData] = useState<{
+    output: string;
+    error: string;
+    executionTime: number;
+  }>({
+    output: "",
+    error: "",
+    executionTime: 0,
+  });
   const [language, setLanguage] = useState("py");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -41,10 +48,34 @@ const CodePlayground = () => {
       label: "JavaScript",
       hello: 'console.log("Hello, world!");',
     },
-    // { value: 'java', label: 'Java', hello: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, world!");\n    }\n}' },
-    // { value: 'cpp', label: 'C++', hello: '#include <iostream>\n\nint main() {\n    std::cout << "Hello, world!" << std::endl;\n    return 0;\n}' },
-    // { value: 'c', label: 'C', hello: '#include <stdio.h>\n\nint main() {\n    printf("Hello, world!\\n");\n    return 0;\n}' },
-    // { value: 'go', label: 'Go', hello: 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, world!")\n}' }
+    // TODO: Add Java, C++ support
+    // {
+    //   value: 'java',
+    //   label: 'Java',
+    //   hello: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, world!");\n    }\n}'
+    // },
+    // {
+    //   value: 'cpp',
+    //   label: 'C++',
+    //   hello: '#include <iostream>\n\nint main() {\n    std::cout << "Hello, world!" << std::endl;\n    return 0;\n}'
+    // },
+    {
+      value: "c",
+      label: "C",
+      hello:
+        '#include <stdio.h>\n\nint main() {\n    printf("Hello, world!\\n");\n    return 0;\n}',
+    },
+    {
+      value: "go",
+      label: "Go",
+      hello:
+        'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, world!")\n}',
+    },
+    {
+      value: "kt",
+      label: "Kotlin",
+      hello: 'fun main() {\n    println("Hello, world!")\n}',
+    },
   ];
 
   const getLanguageExtension = useCallback((lang: string) => {
@@ -54,6 +85,7 @@ const CodePlayground = () => {
       case "js":
         return javascript();
       case "java":
+      case "kt": // Use Java syntax highlighting for Kotlin
         return java();
       case "cpp":
       case "c":
@@ -65,31 +97,29 @@ const CodePlayground = () => {
 
   const runCode = async () => {
     setIsLoading(true);
-    setError("");
-    setOutput("");
 
     try {
-      const response = await fetch(
-        "https://glimpse-7eir.onrender.com/run-code-lambda",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            language,
-            code,
-            input,
-          }),
+      const response = await fetch("http://0.0.0.0:8000/run-code-lambda", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          language,
+          code,
+          input,
+        }),
+      });
 
       const { body } = await response.json();
       const data = JSON.parse(body);
-      setOutput(data.output);
-      setError(data.error);
+      setData(data);
     } catch (err) {
-      setError("Failed to execute code. Please try again.");
+      setData((data) => ({
+        ...data,
+        error: "Failed to execute code. Please try again.",
+        output: "",
+      }));
     } finally {
       setIsLoading(false);
     }
@@ -220,18 +250,33 @@ const CodePlayground = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {error && (
+              {data.error && (
                 <Alert variant="destructive">
                   <AlertDescription className="font-mono text-sm whitespace-pre-wrap">
-                    {error}
+                    {data.error}
                   </AlertDescription>
                 </Alert>
               )}
 
               <div className="bg-gray-900 rounded-lg p-4 min-h-[24rem]">
                 <pre className="font-mono text-sm text-gray-100 whitespace-pre-wrap text-left">
-                  {output || "Program output will appear here..."}
+                  {data.output || "Program output will appear here..."}
                 </pre>
+              </div>
+              {/* Execution time, copy to clipboard */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-600">
+                  Execution time: {Math.round(data.executionTime * 1000)}ms
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    navigator.clipboard.writeText(data.output);
+                  }}
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
               </div>
             </CardContent>
           </Card>

@@ -347,6 +347,7 @@ const DocsPage = () => {
                     Currently Supported
                   </h3>
                   <ul className="space-y-4">
+                    {/* Python */}
                     <li className="flex items-center space-x-4">
                       <div className="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-lg flex-shrink-0">
                         <img
@@ -358,10 +359,13 @@ const DocsPage = () => {
                       <div>
                         <h4 className="font-medium text-left">Python</h4>
                         <p className="text-sm text-gray-600 text-left">
-                          Python 3.9 with common data science packages
+                          Python 3.9 with common data science packages (numpy,
+                          pandas, requests, beautifulsoup4, python-dateutil,
+                          pytz)
                         </p>
                       </div>
                     </li>
+                    {/* JavaScript */}
                     <li className="flex items-center space-x-4">
                       <div className="w-12 h-12 flex items-center justify-center bg-yellow-100 rounded-lg flex-shrink-0">
                         <img
@@ -377,7 +381,61 @@ const DocsPage = () => {
                         </p>
                       </div>
                     </li>
+                    {/* C */}
+                    <li className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+                        <img
+                          src="https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg"
+                          alt="C"
+                          className="w-8 h-8"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-left">C</h4>
+                        <p className="text-sm text-gray-600 text-left">
+                          Standard C compiler
+                        </p>
+                      </div>
+                    </li>
+                    {/* Go */}
+                    <li className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-lg flex-shrink-0">
+                        <img
+                          src="https://miro.medium.com/v2/resize:fit:1000/0*YISbBYJg5hkJGcQd.png"
+                          alt="Go"
+                          className="w-8 h-8"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-left">Go</h4>
+                        <p className="text-sm text-gray-600 text-left">
+                          Go 1.20 runtime environment
+                        </p>
+                      </div>
+                    </li>
+                    {/* Kotlin */}
+                    <li className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-purple-100 rounded-lg flex-shrink-0">
+                        <img
+                          src="https://cdn.edflex.com/media/uploads/mooc/logo/0c28bde7696e65cbf847b3c859f71d4f20ff3e05.png"
+                          alt="Kotlin"
+                          className="w-8 h-8"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-left">Kotlin</h4>
+                        <p className="text-sm text-gray-600 text-left">
+                          Kotlin 1.9 runtime environment
+                        </p>
+                      </div>
+                    </li>
                   </ul>
+                  <h3 className="text-xl font-semibold mb-4 text-left mt-4">
+                    Coming Soon
+                  </h3>
+                  <p className="text-gray-600 text-left">
+                    Java, C++, Rust, Scala, Swift, Haskell, etc.
+                  </p>
                 </Card>
               </section>
 

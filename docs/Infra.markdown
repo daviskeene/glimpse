@@ -1,6 +1,7 @@
 # Infrastructure
 
 This version of Glimpse was created using:
+
 - FastAPI
 - AWS Lambda
 - AWS ECR + Docker
@@ -14,7 +15,7 @@ The Glimpse service is supposed to be able to run code in many different languag
 I have a `Dockerfile-aws` which I used to define our custom image. We can build the image like so:
 
 ```
-$ docker build --platform linux/amd64 -t glimpse-lambda -f Dockerfiles/Dockerfile-aws .     
+$ docker build --platform linux/amd64 -t glimpse-lambda -f Dockerfiles/Dockerfile-aws .
 ```
 
 Once the image is built, we can create a new ECR repository to hold the image:
@@ -28,7 +29,7 @@ and deploy it:
 ```
 $ aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account_id>.dkr.ecr.us-east-1.amazonaws.com
 
-$ docker tag glimpse-lambda:latest <account_id>.dkr.ecr.us-east-1.amazonaws.com/glimpse-lambda:latest       
+$ docker tag glimpse-lambda:latest <account_id>.dkr.ecr.us-east-1.amazonaws.com/glimpse-lambda:latest
 
 $ docker push <account_id>.dkr.ecr.us-east-1.amazonaws.com/glimpse-lambda:latest
 ```

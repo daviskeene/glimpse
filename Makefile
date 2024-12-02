@@ -27,3 +27,19 @@ install_requirements:
 
 docker_build:
 	@docker build -t glimpse -f Dockerfiles/Dockerfile .
+
+# Lambda Layer targets
+.PHONY: build-layer publish-layer
+
+build-layer:
+	@cd layers/java-kotlin && \
+	chmod +x build.sh && \
+	./build.sh
+
+publish-layer:
+	@aws lambda publish-layer-version \
+		--layer-name java-kotlin-runtime \
+		--description "Java and Kotlin runtime with pre-warmed JVM" \
+		--zip-file fileb://layers/java-kotlin/java-kotlin-layer.zip \
+		--compatible-runtimes provided.al2 \
+		--region us-east-1

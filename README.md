@@ -17,22 +17,23 @@ The service is running at `https://glimpse-7eir.onrender.com`. Here's a quick ex
 
 ```javascript
 // Send some code to run
-fetch('https://glimpse-7eir.onrender.com/run-code-lambda', {
-  method: 'POST',
+fetch("https://glimpse-7eir.onrender.com/run-code-lambda", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json'
+    "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    language: 'py',
+    language: "py",
     code: 'print("Hello from Glimpse!")',
-    input: ''  // optional: for programs that need input
-  })
+    input: "", // optional: for programs that need input
+  }),
 })
-.then(response => response.json())
-.then(data => console.log(data));
+  .then((response) => response.json())
+  .then((data) => console.log(data));
 ```
 
 You'll get back something like this:
+
 ```javascript
 {
   "statusCode": 200,
@@ -64,16 +65,18 @@ AWS_DEFAULT_REGION=your_region
 
 2. Follow the steps in [here](/docs/infra.markdown) to upload the image to ECR + deploy the lambda.
 
-2. Run the server:
+3. Run the server:
 
 ```bash
 python3 -m uvicorn api-lambda:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 2. Docker Pool Mode
+
 This runs code in a pool of Docker containers. Simpler to set up, but needs more resources:
 
 1. Set up Docker (make sure the daemon is running) and run:
+
 ```bash
 # Install dependencies and build the docker image
 make build
@@ -103,6 +106,7 @@ Feel free to open issues or submit PRs! This is a fun project and I'm always loo
 ## Credits
 
 Built with:
+
 - FastAPI + Python3
 - AWS Lambda (for the serverless goodness)
 - Docker (for the v1 container pool magic)

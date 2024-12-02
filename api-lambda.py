@@ -75,6 +75,8 @@ async def run_code_lambda(request: Request, code_in: CodeIn):
             Payload=json.dumps(payload),
         )
 
+        # breakpoint()
+
         # Parse the Lambda response
         response_payload = json.load(response["Payload"])
         if response.get("FunctionError"):

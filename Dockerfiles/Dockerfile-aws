@@ -5,18 +5,47 @@ RUN yum groupinstall -y "Development Tools" && \
     yum update -y && \
     yum install -y wget tar gzip
 
+# Install Python packages
+COPY requirements-lambda.txt ${LAMBDA_TASK_ROOT}
+RUN pip3 install -r ${LAMBDA_TASK_ROOT}/requirements-lambda.txt
+
 # Install Node.js
 RUN curl -sL https://rpm.nodesource.com/setup_16.x | bash - && \
     yum install -y nodejs
 
-# Install Amazon Corretto (Java)
-# RUN yum install -y java-11-amazon-corretto-devel
+# Install Java OpenJDK with minimal memory settings
+ENV JAVA_OPTS="-Xmx256m -Xms128m"
+
+# Install Java (Amazon Corretto)
+RUN cd /tmp && \
+    wget https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz && \
+    tar -xzf amazon-corretto-11-x64-linux-jdk.tar.gz && \
+    mkdir -p /usr/lib/jvm/java-11-amazon-corretto && \
+    mv /tmp/amazon-corretto-11*/* /usr/lib/jvm/java-11-amazon-corretto/ && \
+    rm amazon-corretto-11-x64-linux-jdk.tar.gz
+ENV JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto
+ENV PATH="/usr/lib/jvm/java-11-amazon-corretto/bin:${PATH}"
+
+# Install Kotlin with memory constraints
+ENV KOTLIN_OPTS="-Xmx256m -Xms128m"
+RUN curl -L "https://github.com/JetBrains/kotlin/releases/download/v1.9.0/kotlin-compiler-1.9.0.zip" -o kotlin.zip && \
+    yum install -y unzip && \
+    unzip kotlin.zip -d /usr/local && \
+    rm kotlin.zip
+ENV PATH="/usr/local/kotlinc/bin:${PATH}"
+
+# Install GCC and G++ for C/C++
+RUN yum install -y gcc gcc-c++ make
 
 # Install Go
 RUN wget https://go.dev/dl/go1.20.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.20.linux-amd64.tar.gz && \
     rm go1.20.linux-amd64.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Create necessary directories and set permissions
+RUN mkdir -p /tmp && \
+    chmod 777 /tmp
 
 # Copy the lambda function code
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}

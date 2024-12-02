@@ -2,6 +2,7 @@ import subprocess
 import asyncio
 import os
 import docker
+import time
 from fastapi import HTTPException
 
 from utils.file_manager import create_submission, remove_submission
@@ -56,6 +57,9 @@ async def run_code(
             f"Please enter a valid language. The languages currently supported are: {', '.join(supported_languages)}."
         )
 
+    # Start timing
+    start_time = time.time()
+
     if container_pool:
         # If a container pool is provided, use it.
         return await run_code_pool(language, code, input, container_pool)
@@ -91,11 +95,15 @@ async def run_code(
 
     await remove_submission(job_id, language, commands.get("outputExt"))
 
+    # Calculate execution time before return
+    execution_time = time.time() - start_time
+
     return {
         "output": stdout.decode(),
         "error": stderr.decode(),
         "language": language,
         "info": commands["compilerInfoCommand"],
+        "execution_time": execution_time,
     }
 
 
@@ -121,6 +129,9 @@ async def run_code_pool(
         raise ValueError(
             f"Please enter a valid language. The languages currently supported are: {', '.join(supported_languages)}."
         )
+
+    # Start timing
+    start_time = time.time()
 
     # Get a container from the pool
     container = container_pool.get_container()
@@ -193,12 +204,16 @@ async def run_code_pool(
         # Replace the used container
         container_pool.replace_container(container)
 
+    # Calculate execution time before return
+    execution_time = time.time() - start_time
+
     # Return the code execution result
     return {
         "output": output,
         "error": error,
         "language": language,
         "info": commands["compilerInfoCommand"],
+        "execution_time": execution_time,
     }
 
 
