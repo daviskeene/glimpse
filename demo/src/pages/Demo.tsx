@@ -99,7 +99,7 @@ const CodePlayground = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://0.0.0.0:8000/run-code-lambda", {
+      const response = await fetch("https://glimpse-7eir.onrender.com/run-code-lambda", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
