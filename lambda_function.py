@@ -1,6 +1,6 @@
 import json
-import subprocess
 import os
+import subprocess
 import time
 
 # Define commands for each language
@@ -54,6 +54,23 @@ LANGUAGE_COMMANDS = {
     },
 }
 
+def get_sanitized_env():
+    """
+    Constructs a minimal environment dictionary for running user snippets
+    without exposing AWS credentials or other sensitive values.
+    Adjust as needed for your runtimes and libraries.
+    """
+    base_env = {
+        "PATH": os.environ.get("PATH", "/usr/bin"),         # Essential for compilers/interpreters
+        "LANG": "en_US.UTF-8",                               # Locale
+        "JAVA_HOME": "/usr/lib/jvm/java-11-amazon-corretto", # Needed for Java/Kotlin
+        "JAVA_OPTS": "-Xmx256m -Xms128m",                    # Java memory settings
+        "KOTLIN_OPTS": "-Xmx256m -Xms128m",                  # Kotlin memory settings
+        "LAMBDA_TASK_ROOT": "/var/task",                     # Where your Lambda code resides
+        "HOME": "/tmp",                                      # Safe 'home' directory for caching
+        "GOCACHE": "/tmp/.cache/go-build"                    # Go build cache
+    }
+    return base_env
 
 def lambda_handler(event, context):
     try:
@@ -74,6 +91,9 @@ def lambda_handler(event, context):
         # Get language details
         lang_config = LANGUAGE_COMMANDS[language]
         file_ext = lang_config["file_ext"]
+
+        lang_specific_env = lang_config.get("env", {})  # e.g., {"GOCACHE": ...} for Go
+        env_for_subprocess = {**get_sanitized_env(), **lang_specific_env}
 
         # Create a temporary file to save the code
         code_file = (
@@ -100,7 +120,7 @@ def lambda_handler(event, context):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     timeout=20,
-                    env=lang_config.get("env", None),
+                    env=env_for_subprocess,
                 )
                 if compile_result.returncode != 0:
                     return {
@@ -132,7 +152,7 @@ def lambda_handler(event, context):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=lang_config.get("env", None),
+            env=env_for_subprocess,
         )
 
         # If input is provided, pass it to the process
