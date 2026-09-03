@@ -16,7 +16,7 @@ import pytest
 
 from glimpse.execution import KILLED_EXIT_CODE, NoCapacityError
 from glimpse.languages import BY_ID, LANGUAGES
-from glimpse.runners.docker import LABEL, DockerRunner
+from glimpse.runners.docker import BACKSTOP_GRACE_S, LABEL, DockerRunner
 from tests.conftest import make_settings
 
 pytestmark = pytest.mark.docker
@@ -293,13 +293,18 @@ async def test_output_cap_and_flood_protection(runner: DockerRunner) -> None:
 
         flood = "import sys\nwhile True: sys.stdout.write('z' * 65536)"
         started = time.monotonic()
-        result = await small.execute(BY_ID["python"], flood, stdin="", timeout_s=10)
-        # Generous bound: shared CI runners have shown 30s+ under daemon load; the point
-        # is that a flood cannot wedge the slot indefinitely.
-        assert time.monotonic() - started < 60
-        assert result.truncated
+        result = await small.execute(BY_ID["python"], flood, stdin="", timeout_s=5)
+        elapsed = time.monotonic() - started
+        # A flood is contained one of two ways, both correct: the inline reader trips the
+        # 4x-cap abort and kills the container, or (if a loaded daemon streams/kills too
+        # slowly) the async backstop kills it. Assert the invariants that hold either way:
+        # the slot is not wedged, the program is killed, and API memory never exceeds the
+        # cap. (Which path wins depends on daemon timing, so don't pin it -- see the
+        # history of this test.)
+        assert elapsed < 5 + BACKSTOP_GRACE_S + 8, elapsed
         assert result.exit_code == KILLED_EXIT_CODE
-        assert "output exceeded" in result.stderr
+        assert len(result.stdout.encode()) <= 2048
+        assert result.truncated or "hard time limit" in result.stderr
     finally:
         await small.stop()
 
