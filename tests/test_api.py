@@ -165,6 +165,42 @@ def test_code_too_large(fake_runner: FakeRunner) -> None:
     assert fake_runner.calls == []
 
 
+def test_chunked_post_is_rejected(client: TestClient) -> None:
+    """A body without Content-Length would be buffered unbounded before auth/rate limits."""
+
+    def gen() -> object:
+        yield b'{"language": "python", "code": "x"}'
+
+    response = client.post(
+        "/v1/execute", content=gen(), headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 411
+    assert response.json()["error"]["code"] == "length_required"
+
+
+def test_timeout_above_schema_floor_is_clamped_not_rejected(fake_runner: FakeRunner) -> None:
+    settings = make_settings(default_timeout_s=3, max_timeout_s=8)
+    with TestClient(create_app(settings, runner=fake_runner)) as client:
+        response = client.post(
+            "/v1/execute", json={"language": "python", "code": "x", "timeout_s": 3600}
+        )
+        assert response.status_code == 200
+    assert fake_runner.calls[-1]["timeout_s"] == 8.0
+
+
+def test_non_ascii_bearer_token_is_401_not_500(fake_runner: FakeRunner) -> None:
+    settings = make_settings(api_keys="k1")
+    with TestClient(create_app(settings, runner=fake_runner)) as client:
+        # httpx refuses non-ASCII str header values, but raw bytes reach the ASGI app
+        # exactly as a hostile client would send them (Starlette decodes headers latin-1).
+        response = client.post(
+            "/v1/execute",
+            json={"language": "python", "code": "x"},
+            headers=[(b"authorization", "Bearer caf\u00e9".encode("latin-1"))],
+        )
+        assert response.status_code == 401
+
+
 def test_no_capacity_is_503_with_retry_after(client: TestClient, fake_runner: FakeRunner) -> None:
     fake_runner.fail_with = NoCapacityError("at capacity (4 concurrent executions)")
     response = client.post("/v1/execute", json={"language": "python", "code": "x"})

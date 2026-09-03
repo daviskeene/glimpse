@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import IO, Any, Literal
 
@@ -87,14 +88,23 @@ def decode_output(data: bytes) -> str:
 
 
 class _CappedReader(threading.Thread):
-    """Drain a pipe on a thread, keeping at most ``cap`` bytes."""
+    """Drain a pipe on a thread, keeping at most ``cap`` bytes.
 
-    def __init__(self, stream: IO[bytes], cap: int) -> None:
+    A stream that floods far past the cap (4x) triggers ``on_flood`` once — the caller
+    uses it to kill the process group so a flood cannot occupy the slot until the
+    timeout — and keeps draining so the pipes still reach EOF.
+    """
+
+    def __init__(
+        self, stream: IO[bytes], cap: int, on_flood: Callable[[], None] | None = None
+    ) -> None:
         super().__init__(daemon=True)
         self.stream = stream
         self.cap = cap
+        self.on_flood = on_flood
         self.data = bytearray()
         self.truncated = False
+        self.flooded = False
         self.total = 0
 
     def run(self) -> None:
@@ -109,6 +119,10 @@ class _CappedReader(threading.Thread):
                     self.data.extend(chunk[:room])
                 if self.total > self.cap:
                     self.truncated = True
+                if self.total > 4 * self.cap and not self.flooded:
+                    self.flooded = True
+                    if self.on_flood is not None:
+                        self.on_flood()
         except (OSError, ValueError):
             pass
         finally:
@@ -158,8 +172,9 @@ def run_process(
         start_new_session=True,
     )
     assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
-    out_reader = _CappedReader(proc.stdout, max_output_bytes)
-    err_reader = _CappedReader(proc.stderr, max_output_bytes)
+    on_flood = lambda: _kill_group(proc)  # noqa: E731 - tiny closure over proc
+    out_reader = _CappedReader(proc.stdout, max_output_bytes, on_flood=on_flood)
+    err_reader = _CappedReader(proc.stderr, max_output_bytes, on_flood=on_flood)
     out_reader.start()
     err_reader.start()
     feeder = threading.Thread(target=_feed_stdin, args=(proc.stdin, stdin), daemon=True)
@@ -184,10 +199,16 @@ def run_process(
     if code is None or code < 0:
         # Killed by a signal: report the shell convention 128 + signal.
         code = 128 + (-code if code else signal.SIGKILL)
+    err = bytes(err_reader.data)
+    if (out_reader.flooded or err_reader.flooded) and not timed_out:
+        # Mirror the Docker runner: a flood far past the cap is a kill, and says so.
+        code = KILLED_EXIT_CODE
+        note = f"[glimpse] output exceeded {max_output_bytes} bytes; process killed.\n".encode()
+        err = err[: max(0, max_output_bytes - len(note))] + note
     return (
         code,
         bytes(out_reader.data),
-        bytes(err_reader.data),
+        err,
         timed_out,
         out_reader.truncated or err_reader.truncated,
     )

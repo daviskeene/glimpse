@@ -64,15 +64,28 @@ container against kernel exploits. Inside it:
 
 - each invocation gets a fresh `mkdtemp` under `/tmp` that is removed afterwards;
 - compile and run each have a hard `SIGKILL` timeout applied to the whole process group;
-- output is capped; the environment is reduced to `PATH`, locale and toolchain variables
-  (no AWS credentials reach user code).
+- output is capped (floods are killed); the child's environment is reduced to `PATH`,
+  locale and toolchain variables — the function's AWS credentials are not *passed* to it
+  (but see the first caveat below).
 
-Caveats: a *warm* Lambda instance is reused for the next invocation, so `/tmp` and process
-state persist between requests **in the same instance**; Glimpse mitigates this by using a
-per-invocation directory and by killing the process group, but a determined program could
-still leave something in `/tmp`. Network access is whatever the function's configuration
-allows — attach it to a VPC without egress if you need the "no network" guarantee. Memory
-and CPU are set on the function (2048 MB is a comfortable default; Kotlin needs ≥ 1024 MB).
+Caveats — read these before treating the Lambda backend as multi-tenant-safe:
+
+- **User code shares a uid with the Lambda runtime process.** It can read the runtime's
+  `/proc/<pid>/environ` — which contains the function's **AWS role credentials** — and can
+  reach the runtime API (`$AWS_LAMBDA_RUNTIME_API`). Scrubbing the child's environment
+  (which Glimpse does) does not close either channel.
+- **Warm instances are reused.** `/tmp` persists between invocations, and a process that
+  escapes the group kill (e.g. via `setsid()` double-fork) survives into later requests in
+  the same instance, where it could observe or answer other users' invocations through the
+  runtime API.
+- **Egress is whatever the function's configuration allows.** With default networking, the
+  role credentials above are exfiltratable.
+
+Consequently: use the Lambda backend for semi-trusted callers, or attach the function to a
+VPC subnet with **no egress** and an execution role with **no permissions beyond logging**,
+and accept that same-instance cross-contamination is possible. The Docker runner is the
+reference isolation story. Memory and CPU are set on the function (2048 MB is a
+comfortable default; Kotlin needs ≥ 1024 MB).
 
 ## `unsafe-local` runner
 

@@ -19,8 +19,10 @@ class ExecuteRequest(BaseModel):
     timeout_s: float | None = Field(
         default=None,
         ge=1,
-        le=30,
-        description="Wall-clock limit for the run phase in seconds (server default if omitted).",
+        description=(
+            "Wall-clock limit for the run phase in seconds; clamped to the server's "
+            "configured maximum (default 30). Server default if omitted."
+        ),
     )
 
 

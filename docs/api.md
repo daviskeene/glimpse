@@ -27,13 +27,15 @@ Every non-2xx response has the shape
 | 400 | `unsupported_language` | the message lists supported ids and aliases |
 | 401 | `unauthorized` | see Authentication |
 | 404 | `not_found` | |
+| 411 | `length_required` | `POST` without a `Content-Length` header (chunked bodies are not accepted) |
 | 413 | `code_too_large` / `stdin_too_large` / `payload_too_large` | limits are configurable server-side (default 64 KiB each) |
 | 422 | `validation_error` | `details` is a list of `{loc, msg, type}` |
 | 429 | `rate_limited` | per-client or (message says so) global limit; `Retry-After` header in seconds |
 | 500 | `runner_error` / `internal_error` | |
 | 503 | `no_capacity` / `unhealthy` | `Retry-After: 1` — all sandboxes busy, try again |
 
-Every response carries an `X-Request-ID` header (yours is echoed if you send one).
+API responses carry an `X-Request-ID` header (yours is echoed if you send one; CORS
+preflights and last-resort 500s may lack it).
 
 ## `POST /v1/execute`
 
@@ -46,7 +48,7 @@ Request body:
 | `language` | string | yes | id or alias, case-insensitive (see `GET /v1/languages`) |
 | `code` | string | yes | non-empty, ≤ `GLIMPSE_MAX_CODE_BYTES` (64 KiB) |
 | `stdin` | string | no | ≤ `GLIMPSE_MAX_STDIN_BYTES` (64 KiB); made available on standard input |
-| `timeout_s` | number | no | 1–30; clamped to the server's `GLIMPSE_MAX_TIMEOUT_S`; default `GLIMPSE_DEFAULT_TIMEOUT_S` (10) |
+| `timeout_s` | number | no | ≥ 1; clamped to the server's `GLIMPSE_MAX_TIMEOUT_S` (default 30); default `GLIMPSE_DEFAULT_TIMEOUT_S` (10) |
 
 Unknown fields are rejected (`422`).
 
@@ -61,7 +63,7 @@ Response `200`:
 | `stdout` | string | UTF-8 (invalid bytes replaced), ≤ `GLIMPSE_MAX_OUTPUT_BYTES` (64 KiB) |
 | `stderr` | string | same cap; may end with a `[glimpse] ...` note explaining a kill |
 | `duration_ms` | integer | wall-clock time of that phase |
-| `truncated` | boolean | stdout or stderr was cut at the cap. A program that floods far beyond it is killed with `exit_code` 137 |
+| `truncated` | boolean | stdout or stderr was cut at the cap. A program that floods far beyond it (4x) is killed with `exit_code` 137, on every backend |
 | `compile_stderr` | string | compiler diagnostics (warnings) when compilation **succeeded**; empty for interpreted languages and on compile failure (then `stderr` holds the compiler output) |
 
 Examples:
@@ -88,9 +90,10 @@ removed, `\r\n` / `\r` line endings become `\n`, and a trailing newline is added
 
 Language notes:
 
-- **Java**: the file is named after the first `public class` / `interface` / `enum` /
-  `record` (`public class Solution` → `Solution.java`, run as `Solution`); with no public
-  type it is `Main.java`.
+- **Java**: a `package` declaration is removed (snippets run as a single file), and the
+  file is named after the first `public class` / `interface` / `enum` / `record`
+  (`public class Solution` → `Solution.java`, run as `Solution`); with no public type it
+  is `Main.java`.
 - **Kotlin**: top-level `fun main()`; compiling takes a few seconds.
 - **Go**: a single file; a `package` clause other than `main` is rewritten to `package main`.
   Standard library only (no module downloads — there is no network).

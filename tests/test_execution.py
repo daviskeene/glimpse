@@ -112,10 +112,23 @@ print("done")
 
 
 def test_output_is_capped() -> None:
-    result = execute_local(PY, "print('x' * 200_000)", max_output_bytes=1024)
+    # Past the cap but under the 4x flood threshold: truncated, not killed.
+    result = execute_local(PY, "print('x' * 3000)", max_output_bytes=1024)
     assert result.truncated
     assert len(result.stdout.encode()) == 1024
     assert result.exit_code == 0
+
+
+def test_output_flood_is_killed() -> None:
+    """A program flooding far past the cap is killed, like on the Docker backend."""
+    flood = "import sys\nwhile True: sys.stdout.write('z' * 65536)"
+    started = time.monotonic()
+    result = execute_local(PY, flood, timeout_s=10, max_output_bytes=2048)
+    assert time.monotonic() - started < 8
+    assert result.truncated
+    assert not result.timed_out
+    assert result.exit_code == KILLED_EXIT_CODE
+    assert "output exceeded" in result.stderr
 
 
 def test_unicode_output_survives() -> None:

@@ -59,8 +59,8 @@ export default function Playground() {
   const health = useHealth();
   const limits = describeLimits(health);
 
-  // The latest inputs live in a ref so a run triggered from a keyboard shortcut (which
-  // can fire between an edit and React's re-render) never uses stale state.
+  // Inputs also live in a ref (refreshed every render, and synchronously for `code` in
+  // the editor's onChange) so a keyboard-shortcut run cannot see a stale editor buffer.
   const latest = useRef({ langId, code, stdin, timeoutS });
   latest.current = { langId, code, stdin, timeoutS };
   const inFlight = useRef(false);
@@ -70,6 +70,7 @@ export default function Playground() {
     inFlight.current = true;
     const { langId: language, code: source, stdin: input, timeoutS: timeout } = latest.current;
     const startedAt = performance.now();
+    setElapsed(0);
     setState({ status: "running", startedAt });
     setShowRaw(false);
     try {
@@ -451,7 +452,7 @@ export default function Playground() {
             {
               n: 3,
               title: lang.compiled ? "Compile, then run under a hard deadline" : "Run under a hard deadline",
-              body: `${lang.compiled ? "The compiler runs first with its own limit. Then " : ""}timeout -s KILL ${timeoutS} wraps your program; the runner kills the container if anything hangs.`,
+              body: `${lang.compiled ? "The compiler runs first with its own limit. Then " : ""}a supervisor SIGKILLs the whole process group at ${timeoutS}s; the runner kills the container if anything hangs.`,
             },
             {
               n: 4,

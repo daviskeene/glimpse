@@ -3,6 +3,10 @@
 {$GLIMPSE_DOMAIN} {
 	encode zstd gzip
 
+	request_body {
+		max_size 2MB
+	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		-Server

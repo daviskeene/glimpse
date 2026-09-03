@@ -9,7 +9,9 @@ services:
   api:
     environment:
       GLIMPSE_TRUST_PROXY: "true"
-      GLIMPSE_CLIENT_IP_HEADER: ${GLIMPSE_CLIENT_IP_HEADER:-CF-Connecting-IP}
+      # Only set a client-IP header when a proxy you control (e.g. Cloudflare) writes it
+      # AND the origin only accepts traffic from that proxy; otherwise it is spoofable.
+      GLIMPSE_CLIENT_IP_HEADER: ${GLIMPSE_CLIENT_IP_HEADER:-}
       GLIMPSE_GLOBAL_RATE_LIMIT: ${GLIMPSE_GLOBAL_RATE_LIMIT:-600/minute}
     logging:
       driver: json-file

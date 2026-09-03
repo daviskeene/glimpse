@@ -34,6 +34,37 @@ def test_java_public_type(code: str, expected: str | None) -> None:
     assert source.java_public_type(code) == expected
 
 
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("@Deprecated public class Marked {}", "Marked"),
+        ('@SuppressWarnings("unchecked") public class Annotated {}', "Annotated"),
+        ('String s = """\npublic class Fake {}\n""";\npublic class Real {}', "Real"),
+    ],
+)
+def test_java_public_type_annotations_and_text_blocks(code: str, expected: str) -> None:
+    assert source.java_public_type(code) == expected
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("package com.example.app;\npublic class X {}\n", "\npublic class X {}\n"),
+        ("  package a.b ;  // note\nclass Y {}\n", "  // note\nclass Y {}\n"),
+        ("// package fake;\npublic class Z {}\n", "// package fake;\npublic class Z {}\n"),
+        ("public class NoPkg {}\n", "public class NoPkg {}\n"),
+    ],
+)
+def test_java_strip_package(code: str, expected: str) -> None:
+    assert source.java_strip_package(code) == expected
+
+
+def test_prepare_java_strips_package_and_names_file() -> None:
+    prepared = source.prepare(BY_ID["java"], "package com.foo;\npublic class Solution { }\n")
+    assert prepared.filename == "Solution.java"
+    assert "package" not in prepared.code
+
+
 def test_prepare_java_picks_filename_and_stem() -> None:
     prepared = source.prepare(BY_ID["java"], "public class Solution {}")
     assert prepared.filename == "Solution.java"

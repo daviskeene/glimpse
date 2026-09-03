@@ -100,6 +100,49 @@ async def test_java_public_class_name(runner: DockerRunner) -> None:
     assert result.stdout == "solved\n"
 
 
+async def test_java_dollar_class_and_package(runner: DockerRunner) -> None:
+    dollar = (
+        "public class Main$Helper { "
+        'public static void main(String[] a) { System.out.println("dollar ok"); } }'
+    )
+    result = await runner.execute(BY_ID["java"], dollar, stdin="", timeout_s=15)
+    assert result.ok, result
+    assert result.stdout == "dollar ok\n"
+
+    packaged = (
+        "package com.example.demo;\n"
+        "public class App { "
+        'public static void main(String[] a) { System.out.println("pkg ok"); } }'
+    )
+    result = await runner.execute(BY_ID["java"], packaged, stdin="", timeout_s=15)
+    assert result.ok, result
+    assert result.stdout == "pkg ok\n"
+
+
+async def test_setsid_escapee_does_not_wedge_the_slot(runner: DockerRunner) -> None:
+    """A child that starts its own session (escaping glimpse-run's process-group kill) and
+    keeps stdout open must not hold the request open: Docker ends the exec stream when the
+    supervisor exits, and the fresh-container teardown then kills the escapee. The call
+    returns promptly with the program's own result and the sandbox is immediately reusable."""
+    code = (
+        "import os, time, sys\n"
+        "if os.fork() == 0:\n"
+        "    os.setsid()\n"  # new session/pgid: survives kill(-pgid, SIGKILL)
+        "    time.sleep(300)\n"  # keeps the inherited stdout fd open
+        "else:\n"
+        "    print('started', flush=True)\n"
+        "    sys.exit(0)\n"
+    )
+    started = time.monotonic()
+    result = await runner.execute(BY_ID["python"], code, stdin="", timeout_s=1)
+    elapsed = time.monotonic() - started
+    assert elapsed < 8, elapsed  # well under the async backstop; the slot is not wedged
+    assert result.stdout == "started\n"
+    # The sandbox is fully usable immediately afterwards.
+    follow_up = await runner.execute(BY_ID["python"], "print('ok')", stdin="", timeout_s=5)
+    assert follow_up.stdout == "ok\n"
+
+
 async def test_go_non_main_package(runner: DockerRunner) -> None:
     code = 'package utils\n\nimport "fmt"\n\nfunc main() { fmt.Println("rewritten") }\n'
     result = await runner.execute(BY_ID["go"], code, stdin="", timeout_s=10)
@@ -251,7 +294,9 @@ async def test_output_cap_and_flood_protection(runner: DockerRunner) -> None:
         flood = "import sys\nwhile True: sys.stdout.write('z' * 65536)"
         started = time.monotonic()
         result = await small.execute(BY_ID["python"], flood, stdin="", timeout_s=10)
-        assert time.monotonic() - started < 8
+        # Generous bound: shared CI runners have shown 30s+ under daemon load; the point
+        # is that a flood cannot wedge the slot indefinitely.
+        assert time.monotonic() - started < 60
         assert result.truncated
         assert result.exit_code == KILLED_EXIT_CODE
         assert "output exceeded" in result.stderr

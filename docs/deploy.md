@@ -76,9 +76,14 @@ restarts on reboot.
    proxy with the HTTP-01 challenge (Cloudflare exempts `/.well-known/acme-challenge/`
    from HTTPS redirects). If issuance fails on first boot, temporarily set the record to
    "DNS only", wait for `make prod-logs` to show the certificate, then re-enable the proxy.
-3. Optional second layer: a WAF rate-limiting rule (one is free) on `/v1/execute`, e.g.
-   60 requests per minute per IP, and a firewall rule allowing only Cloudflare's IP ranges
-   to reach ports 80/443 on the VM so the `CF-Connecting-IP` header cannot be spoofed.
+3. If (and only if) the proxy is on, you may set `GLIMPSE_CLIENT_IP_HEADER=CF-Connecting-IP`
+   in `.env` so rate limits key on the real client — but then a firewall rule allowing only
+   [Cloudflare's IP ranges](https://www.cloudflare.com/ips/) to reach ports 80/443 is
+   **required**, not optional: anyone who can reach the origin directly can spoof that
+   header and rotate identities past the per-client limit. Without the firewall, leave the
+   header unset (the default) and rate limiting uses Caddy's `X-Forwarded-For`, which Caddy
+   sets itself. A WAF rate-limiting rule (one is free) on `/v1/execute` is a good second
+   layer either way.
 
 Check:
 

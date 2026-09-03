@@ -57,7 +57,6 @@ class Settings(BaseSettings):
     sandbox_pids_limit: int = 128
     sandbox_tmpfs_mb: int = 64
     sandbox_user: str = "sandbox"
-    sandbox_acquire_timeout_s: float = 5.0
 
     # --- lambda runner --------------------------------------------------------
     lambda_function_name: str | None = None

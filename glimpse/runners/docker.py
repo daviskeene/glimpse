@@ -81,6 +81,7 @@ class DockerRunner(Runner):
         self._creating = 0
         self._stopped = True
         self._versions: dict[str, str] | None = None
+        self._versions_lock = asyncio.Lock()
 
     # --- lifecycle ----------------------------------------------------------------
 
@@ -178,6 +179,8 @@ class DockerRunner(Runner):
                         asyncio.to_thread(self._run, container, language, code, stdin, timeout_s),
                         timeout=budget,
                     )
+                except DockerException as exc:
+                    raise RunnerError(f"sandbox execution failed: {exc}") from exc
                 except TimeoutError:
                     log.error("backstop hit: killing sandbox %s", container.short_id)
                     await asyncio.to_thread(self._kill, container)
@@ -196,15 +199,16 @@ class DockerRunner(Runner):
             self._in_flight -= 1
 
     async def versions(self) -> dict[str, str]:
-        if self._versions is None:
-            if self._client is None or self._stopped:
-                raise RunnerError("docker runner is not running")
-            container = await self._acquire()
-            try:
-                self._versions = await asyncio.to_thread(self._probe_versions, container)
-            finally:
-                self._dispose(container)
-        return self._versions
+        async with self._versions_lock:
+            if self._versions is None:
+                if self._client is None or self._stopped:
+                    raise RunnerError("docker runner is not running")
+                container = await self._acquire()
+                try:
+                    self._versions = await asyncio.to_thread(self._probe_versions, container)
+                finally:
+                    self._dispose(container)
+            return self._versions
 
     # --- pool ---------------------------------------------------------------------
 
@@ -420,10 +424,13 @@ class DockerRunner(Runner):
         env: dict[str, str] = {}
         script = ["set -e"]
         for idx, (chunk, target, append) in enumerate(batch):
-            var = f"GLIMPSE_F{idx}"
-            env[var] = chunk
+            # Both the payload and the target path travel as env vars: file names derived
+            # from user code (Java class names may contain `$`) must never be interpolated
+            # into shell text.
+            env[f"GLIMPSE_F{idx}"] = chunk
+            env[f"GLIMPSE_T{idx}"] = target
             op = ">>" if append else ">"
-            script.append(f'printf %s "${var}" | base64 -d {op} "{target}"')
+            script.append(f'printf %s "${{GLIMPSE_F{idx}}}" | base64 -d {op} "${{GLIMPSE_T{idx}}}"')
         exec_id = api.exec_create(
             container.id,
             ["sh", "-c", "\n".join(script)],
@@ -473,11 +480,20 @@ class DockerRunner(Runner):
             workdir=WORK,
             environment=env,
         )["Id"]
-        started = time.monotonic()
-        watchdog = threading.Timer(timeout_s + WATCHDOG_GRACE_S, self._kill, args=(container,))
+        watchdog_fired = threading.Event()
+
+        def _watchdog_kill() -> None:
+            watchdog_fired.set()
+            self._kill(container)
+
+        watchdog = threading.Timer(timeout_s + WATCHDOG_GRACE_S, _watchdog_kill)
         watchdog.daemon = True
-        watchdog.start()
+        # exec_start performs the HTTP request eagerly, so once it returns the process is
+        # running; starting the clock and the watchdog here keeps daemon latency from
+        # eating into the grace window (a slow start must not read as a timeout).
         stream = api.exec_start(exec_id, stream=True, demux=True)
+        started = time.monotonic()
+        watchdog.start()
 
         out = bytearray()
         err = bytearray()
@@ -515,6 +531,13 @@ class DockerRunner(Runner):
         timed_out = (
             exit_code == SUPERVISOR_TIMEOUT_EXIT and not aborted and elapsed >= timeout_s - 0.05
         )
+        if watchdog_fired.is_set() and not aborted:
+            # Something (e.g. a setsid'd child holding the exec pipes) kept the stream open
+            # past the deadline and the watchdog killed the container: that is a timeout,
+            # whatever exit code the daemon reports for the interrupted exec.
+            timed_out = True
+            note = b"[glimpse] the sandbox did not finish by the deadline and was killed.\n"
+            err = bytearray(err[: max(0, cap - len(note))]) + note
         if timed_out:
             exit_code = KILLED_EXIT_CODE
         if aborted:

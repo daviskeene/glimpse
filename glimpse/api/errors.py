@@ -16,6 +16,14 @@ from ..languages import UnsupportedLanguageError
 log = logging.getLogger("glimpse.api")
 
 
+class BodyTooLargeError(Exception):
+    """The request body exceeded the configured cap while being read (no Content-Length)."""
+
+    def __init__(self, max_body: int) -> None:
+        super().__init__(f"request body exceeds {max_body} bytes")
+        self.max_body = max_body
+
+
 class APIError(Exception):
     """An error with a stable machine-readable ``code``."""
 
@@ -67,6 +75,10 @@ def register_error_handlers(app: FastAPI) -> None:
         return error_response(
             exc.status_code, exc.code, exc.message, details=exc.details, headers=exc.headers
         )
+
+    @app.exception_handler(BodyTooLargeError)
+    async def _body_too_large(_: Request, exc: BodyTooLargeError) -> JSONResponse:
+        return error_response(413, "payload_too_large", str(exc))
 
     @app.exception_handler(UnsupportedLanguageError)
     async def _unsupported(_: Request, exc: UnsupportedLanguageError) -> JSONResponse:

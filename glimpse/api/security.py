@@ -90,8 +90,11 @@ async def require_api_key(request: Request) -> None:
     header = request.headers.get("authorization", "")
     scheme, _, token = header.partition(" ")
     token = token.strip()
-    if scheme.lower() == "bearer" and any(
-        hmac.compare_digest(token, key) for key in settings.api_keys
+    # compare_digest raises on non-ASCII strings; such a token is simply not a valid key.
+    if (
+        scheme.lower() == "bearer"
+        and token.isascii()
+        and any(key.isascii() and hmac.compare_digest(token, key) for key in settings.api_keys)
     ):
         return
     raise APIError(

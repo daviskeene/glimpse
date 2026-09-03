@@ -11,7 +11,8 @@ for example a chat UI that renders an AI-generated code block with a play button
   pid limits, non-root, all capabilities dropped) — destroyed afterwards, never reused.
 - **A stable `/v1` API** where program failures are results and only service failures are errors.
 - **Made for LLM output**: Markdown-fence aliases (`sh`, `ts`, `c++`, …), Java files named after
-  the public class, Go's package clause fixed, BOM/CRLF normalised, compiler warnings returned.
+  the public class (package declarations dropped), Go's package clause fixed, BOM/CRLF
+  normalised, compiler warnings returned.
 - **Python client + `glimpse` CLI**, a `docker compose` one-liner, and an AWS Lambda backend
   for serverless deployments.
 
@@ -54,9 +55,9 @@ Full reference: [docs/api.md](docs/api.md) (or `/docs` on a running server).
 | Field       | Type   | Notes                                                                 |
 |-------------|--------|-----------------------------------------------------------------------|
 | `language`  | string | id or Markdown-fence alias: `python`/`py`, `javascript`/`js`, `typescript`/`ts`, `bash`/`sh`, `c`, `cpp`/`c++`, `rust`/`rs`, `go`, `java`, `kotlin`/`kt` |
-| `code`      | string | ≤ 64 KiB. BOM/CRLF are normalised; Java files are named after the public class; Go's package clause is rewritten to `main`. |
+| `code`      | string | ≤ 64 KiB. BOM/CRLF are normalised; Java package declarations are removed and files are named after the public class; Go's package clause is rewritten to `main`. |
 | `stdin`     | string | optional, ≤ 64 KiB                                                    |
-| `timeout_s` | number | optional, 1–30, wall-clock limit for the run phase (default 10)       |
+| `timeout_s` | number | optional, ≥ 1, clamped to the server's max (default 30); wall-clock limit for the run phase (default 10) |
 
 Response (`200`):
 
@@ -79,6 +80,7 @@ Only failures *of the service* use error status codes, always shaped as
 |--------|-------------------------------------|-------------------------------------------------|
 | 400    | `unsupported_language`              | unknown language id/alias (message lists them)   |
 | 401    | `unauthorized`                      | API keys are configured and none/invalid given   |
+| 411    | `length_required`                   | `POST` without a `Content-Length` header         |
 | 413    | `code_too_large`, `stdin_too_large`, `payload_too_large` | size limits                 |
 | 422    | `validation_error`                  | malformed request (`details` lists the fields)   |
 | 429    | `rate_limited`                      | per-client limit hit; honour `Retry-After`       |

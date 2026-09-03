@@ -27,6 +27,7 @@ class LambdaRunner(Runner):
         self.settings = settings
         self._client: Any | None = client
         self._versions: dict[str, str] | None = None
+        self._versions_lock = asyncio.Lock()
 
     async def start(self) -> None:
         if not self.settings.lambda_function_name:
@@ -81,11 +82,12 @@ class LambdaRunner(Runner):
         return {"function": self.settings.lambda_function_name, "region": self.settings.aws_region}
 
     async def versions(self) -> dict[str, str]:
-        if self._versions is None:
-            data = await asyncio.to_thread(self._invoke, {"action": "versions"})
-            versions = data.get("versions", {})
-            self._versions = {str(k): str(v) for k, v in versions.items()}
-        return self._versions
+        async with self._versions_lock:
+            if self._versions is None:
+                data = await asyncio.to_thread(self._invoke, {"action": "versions"})
+                versions = data.get("versions", {})
+                self._versions = {str(k): str(v) for k, v in versions.items()}
+            return self._versions
 
     def _invoke(self, payload: dict[str, Any]) -> dict[str, Any]:
         assert self._client is not None
