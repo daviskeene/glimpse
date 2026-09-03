@@ -79,7 +79,10 @@ def client_key(request: Request, settings: Settings) -> str:
                 return value.strip()
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            # The *last* hop is the one the proxy in front of us appended (or wrote, in
+            # Caddy's case); earlier entries are whatever the client chose to send, so
+            # keying on them would let a client rotate identities past the limit.
+            return forwarded.rsplit(",", 1)[-1].strip()
     return request.client.host if request.client else "unknown"
 
 

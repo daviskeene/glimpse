@@ -320,6 +320,21 @@ def test_rate_limit_trusts_proxy_header(fake_runner: FakeRunner) -> None:
         assert response.status_code == 200
 
 
+def test_rate_limit_keys_on_last_forwarded_hop(fake_runner: FakeRunner) -> None:
+    """Earlier X-Forwarded-For entries are client-supplied; only the last hop is ours."""
+    settings = make_settings(rate_limit="1/minute", trust_proxy=True)
+    body = {"language": "python", "code": "x"}
+    with TestClient(create_app(settings, runner=fake_runner)) as client:
+        headers = {"X-Forwarded-For": "1.1.1.1, 203.0.113.7"}
+        assert client.post("/v1/execute", json=body, headers=headers).status_code == 200
+        # Same real client rotating a spoofed first hop: still limited.
+        headers = {"X-Forwarded-For": "2.2.2.2, 203.0.113.7"}
+        assert client.post("/v1/execute", json=body, headers=headers).status_code == 429
+        # A genuinely different client is not.
+        headers = {"X-Forwarded-For": "203.0.113.8"}
+        assert client.post("/v1/execute", json=body, headers=headers).status_code == 200
+
+
 def test_global_rate_limit_applies_across_clients(fake_runner: FakeRunner) -> None:
     settings = make_settings(rate_limit=None, global_rate_limit="2/minute", trust_proxy=True)
     with TestClient(create_app(settings, runner=fake_runner)) as client:

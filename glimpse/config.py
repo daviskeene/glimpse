@@ -39,7 +39,9 @@ class Settings(BaseSettings):
     """Limit for ``POST /v1/execute`` across *all* clients; protects a public instance."""
     client_ip_header: str | None = None
     """Header carrying the real client IP behind a proxy (e.g. ``CF-Connecting-IP``).
-    Only used when ``trust_proxy`` is set; falls back to the first ``X-Forwarded-For`` entry."""
+    Only used when ``trust_proxy`` is set; falls back to the last (proxy-appended)
+    ``X-Forwarded-For`` entry. Only set it when the header is written by a proxy you control
+    *and* nothing else can reach the origin, otherwise it is spoofable."""
 
     # --- request limits -------------------------------------------------------
     max_code_bytes: int = 64 * 1024

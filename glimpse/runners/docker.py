@@ -30,6 +30,7 @@ from ..execution import (
     KILLED_EXIT_CODE,
     ExecutionResult,
     NoCapacityError,
+    Phase,
     RunnerError,
     annotate_kill,
     decode_output,
@@ -55,6 +56,13 @@ UPLOAD_BATCH_CHARS = 1024 * 1024
 WATCHDOG_GRACE_S = 2.0
 # Extra seconds the async backstop waits beyond that before giving up on the thread.
 BACKSTOP_GRACE_S = 10.0
+
+
+@dataclass(slots=True)
+class _Progress:
+    """Which phase the worker thread is in, so the async backstop can attribute a kill."""
+
+    phase: Phase = "run"
 
 
 @dataclass(slots=True)
@@ -174,9 +182,12 @@ class DockerRunner(Runner):
                 budget = timeout_s + BACKSTOP_GRACE_S
                 if language.compile is not None:
                     budget += language.compile_timeout_s
+                progress = _Progress()
                 try:
                     return await asyncio.wait_for(
-                        asyncio.to_thread(self._run, container, language, code, stdin, timeout_s),
+                        asyncio.to_thread(
+                            self._run, container, language, code, stdin, timeout_s, progress
+                        ),
                         timeout=budget,
                     )
                 except DockerException as exc:
@@ -186,7 +197,7 @@ class DockerRunner(Runner):
                     await asyncio.to_thread(self._kill, container)
                     return ExecutionResult(
                         language=language.id,
-                        phase="run",
+                        phase=progress.phase,
                         exit_code=KILLED_EXIT_CODE,
                         timed_out=True,
                         stdout="",
@@ -333,8 +344,15 @@ class DockerRunner(Runner):
         return env
 
     def _run(
-        self, container: Container, language: Language, code: str, stdin: str, timeout_s: float
+        self,
+        container: Container,
+        language: Language,
+        code: str,
+        stdin: str,
+        timeout_s: float,
+        progress: _Progress | None = None,
     ) -> ExecutionResult:
+        progress = progress or _Progress()
         prepared = prepare(language, code)
         src = f"{WORK}/{prepared.filename}"
         out = f"{WORK}/{language.artifact or 'main'}"
@@ -347,6 +365,7 @@ class DockerRunner(Runner):
 
         compile_stderr = ""
         if language.compile is not None:
+            progress.phase = "compile"
             argv = render(language.compile, work=WORK, tmp=TMP, src=src, out=out, stem=stem)
             outcome = self._exec(
                 container, argv, env, timeout_s=language.compile_timeout_s, stdin_file=None
@@ -361,6 +380,7 @@ class DockerRunner(Runner):
                 return result
             compile_stderr = decode_output(outcome.stderr)
 
+        progress.phase = "run"
         argv = render(language.run, work=WORK, tmp=TMP, src=src, out=out, stem=stem)
         outcome = self._exec(container, argv, env, timeout_s=timeout_s, stdin_file=STDIN_FILE)
         result = self._to_result(language, "run", outcome, compile_stderr=compile_stderr)
@@ -500,24 +520,30 @@ class DockerRunner(Runner):
         out_total = err_total = 0
         truncated = False
         aborted = False
-        for chunk_out, chunk_err in stream:
-            if chunk_out:
-                out_total += len(chunk_out)
-                room = cap - len(out)
-                if room > 0:
-                    out.extend(chunk_out[:room])
-            if chunk_err:
-                err_total += len(chunk_err)
-                room = cap - len(err)
-                if room > 0:
-                    err.extend(chunk_err[:room])
-            if out_total > cap or err_total > cap:
-                truncated = True
-            # Stop pumping bytes through the daemon for a program that just floods output.
-            if out_total + err_total > 4 * cap:
-                aborted = True
-                self._kill(container)
-                break
+        try:
+            for chunk_out, chunk_err in stream:
+                if chunk_out:
+                    out_total += len(chunk_out)
+                    room = cap - len(out)
+                    if room > 0:
+                        out.extend(chunk_out[:room])
+                if chunk_err:
+                    err_total += len(chunk_err)
+                    room = cap - len(err)
+                    if room > 0:
+                        err.extend(chunk_err[:room])
+                if out_total > cap or err_total > cap:
+                    truncated = True
+                # Stop pumping bytes through the daemon for a program that just floods output.
+                if out_total + err_total > 4 * cap:
+                    aborted = True
+                    self._kill(container)
+                    break
+        except (OSError, DockerException):
+            # Killing the container (flood abort, watchdog) can tear the exec stream down
+            # under us; that is the expected end of this exec, not a backend failure.
+            if not (aborted or watchdog_fired.is_set()):
+                raise
         elapsed = time.monotonic() - started
         watchdog.cancel()
 
