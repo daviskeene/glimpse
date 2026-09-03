@@ -53,8 +53,9 @@ Lifecycle:
    - rejects immediately with `NoCapacityError` (→ `503` + `Retry-After`) if
      `GLIMPSE_SANDBOX_MAX_CONCURRENCY` executions are already in flight;
    - takes a warm container from the pool (or creates one on demand);
-   - on a worker thread: runs `glimpse.source.prepare()` (BOM/CRLF, Java class name, Go
-     package), writes the file and `stdin` into the container's `/work` tmpfs, runs the
+   - on a worker thread: runs `glimpse.source.prepare()` (BOM/CRLF, Java package strip +
+     class name, Go package), writes the file and `stdin` into the container's `/work`
+     tmpfs, runs the
      compile step (if any) and then the program, each as
      `glimpse-run -t <seconds> [-i /work/stdin] -- <argv...>`, streaming demultiplexed
      stdout/stderr with a byte cap and reading the exit code from `exec_inspect`;
@@ -64,12 +65,13 @@ Lifecycle:
 `glimpse-run` (`sandbox/glimpse-run/main.go`, ~80 lines, built into the sandbox image) is
 the in-container supervisor: it starts the program in its own process group with stdin
 redirected from a file, SIGKILLs the group at the deadline (exit 124), and SIGKILLs the
-group again the moment the main process exits so background children can never keep the
-exec's stdout/stderr open — the API returns as soon as the program does. Exit 124 at or
-after the deadline is reported as `timed_out` (with the documented `exit_code` 137); any
-other 137 is the OOM killer or the pids limit. Behind it sit a watchdog thread that kills
-the container 2 s after the deadline and an `asyncio.wait_for` backstop around the whole
-worker-thread call.
+group again the moment the main process exits so background children cannot keep the
+exec's stdout/stderr open — the API returns as soon as the program does. A process that
+moves itself into a new session (`setsid`) escapes the group kill; the watchdog thread
+covers that by killing the container 2 s after the deadline, and an `asyncio.wait_for`
+backstop wraps the whole worker-thread call. Exit 124 at or after the deadline — and any
+watchdog kill — is reported as `timed_out` (with the documented `exit_code` 137); any
+other 137 is the OOM killer or the pids limit.
 
 Every docker-py call runs via `asyncio.to_thread`, so the event loop never blocks.
 
@@ -108,5 +110,5 @@ paths that leaked between warm invocations). `LambdaRunner` validates the payloa
 
 That is all: `tests/test_languages.py` enforces the registry invariants, the Docker
 integration tests and `lambda/smoke_test.py` run every registry sample end-to-end, and
-`GET /v1/languages` exposes the new entry. Language-specific source fixes (Java's class
-name, Go's package clause) live in `glimpse/source.py`.
+`GET /v1/languages` exposes the new entry. Language-specific source fixes (Java's package
+declaration and class name, Go's package clause) live in `glimpse/source.py`.

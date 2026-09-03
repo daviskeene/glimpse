@@ -165,7 +165,7 @@ make up             # docker compose up --build
 glimpse/            the package
   languages.py      the single language registry: commands, aliases, samples (tests and the
                     Lambda smoke test iterate it; add a language here + in the Dockerfiles)
-  source.py         BOM/CRLF normalisation, Java class-name and Go package fixes
+  source.py         BOM/CRLF normalisation, Java package/class-name and Go package fixes
   execution.py      subprocess core shared by the Lambda handler and the unsafe-local runner
   runners/          docker.py · lambda_.py · local.py behind one Runner interface
   api/              FastAPI app: routes, error shapes, API keys, rate limiting

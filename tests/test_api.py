@@ -178,6 +178,33 @@ def test_chunked_post_is_rejected(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "length_required"
 
 
+async def test_body_limit_middleware_caps_streamed_bodies() -> None:
+    """Defense in depth: even a body that slips past the header checks is capped as read."""
+    from glimpse.api.app import BodyLimitMiddleware
+    from glimpse.api.errors import BodyTooLargeError
+
+    async def inner_app(scope: object, receive: object, send: object) -> None:
+        while True:
+            message = await receive()  # type: ignore[operator]
+            if not message.get("more_body"):
+                break
+
+    messages = [
+        {"type": "http.request", "body": b"x" * 8, "more_body": True},
+        {"type": "http.request", "body": b"x" * 8, "more_body": False},
+    ]
+
+    async def receive() -> dict[str, object]:
+        return messages.pop(0)
+
+    async def send(message: object) -> None:
+        pass
+
+    middleware = BodyLimitMiddleware(inner_app, max_body=10)
+    with pytest.raises(BodyTooLargeError):
+        await middleware({"type": "http"}, receive, send)
+
+
 def test_timeout_above_schema_floor_is_clamped_not_rejected(fake_runner: FakeRunner) -> None:
     settings = make_settings(default_timeout_s=3, max_timeout_s=8)
     with TestClient(create_app(settings, runner=fake_runner)) as client:
