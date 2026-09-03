@@ -12,6 +12,10 @@ dist/
 .env
 .env.*
 !.env.example
+# .env.production carries only the public build-time API URL (Vite convention: commit it;
+# only .env*.local are secret) — the demo build needs it, so keep it tracked.
+!.env.production
+!.env.*.example
 
 # OS / editors
 .DS_Store
