@@ -53,6 +53,7 @@ class FakeRunner(Runner):
             raise self.fail_with
         result = ExecutionResult(**self.result.to_dict())
         result.language = language.id
+        result.timings = dict(self.result.timings)
         return result
 
     async def health(self) -> dict[str, Any]:

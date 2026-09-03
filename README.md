@@ -144,8 +144,9 @@ Everything is a `GLIMPSE_*` environment variable (or a `.env` file — see
 | `GLIMPSE_TRUST_PROXY` / `CLIENT_IP_HEADER` | `false` / — | behind a proxy: rate-limit on the real client IP |
 | `GLIMPSE_CORS_ORIGINS`            | `*`              | comma-separated origins                        |
 | `GLIMPSE_DEFAULT_TIMEOUT_S` / `MAX_TIMEOUT_S` | `10` / `30` | run-phase limits                       |
-| `GLIMPSE_SANDBOX_POOL_SIZE`       | `2`              | warm containers kept ready                     |
-| `GLIMPSE_SANDBOX_MAX_CONCURRENCY` | `4`              | in-flight executions before `503`              |
+| `GLIMPSE_SANDBOX_POOL_SIZE`       | `4`              | warm containers kept ready                     |
+| `GLIMPSE_SANDBOX_MAX_CONCURRENCY` | `4`              | executions in flight at once (≈ host vCPUs)    |
+| `GLIMPSE_SANDBOX_QUEUE_TIMEOUT_S` / `QUEUE_SIZE` | `2` / `16` | how long / how many requests wait for a free slot before `503` |
 | `GLIMPSE_SANDBOX_MEMORY_MB` / `CPUS` / `PIDS_LIMIT` | `512` / `1.0` / `128` | per-sandbox limits    |
 | `GLIMPSE_LAMBDA_FUNCTION_NAME`    | —                | required for the `lambda` runner               |
 

@@ -82,6 +82,41 @@ def test_execute_happy_path(client: TestClient, fake_runner: FakeRunner) -> None
         {"language": "python", "code": "print(1)", "stdin": "x", "timeout_s": 5.0}
     ]
     assert response.headers["x-request-id"]
+    assert response.headers["server-timing"].startswith("total;dur=")
+
+
+def test_server_timing_header_carries_runner_phases(
+    client: TestClient, fake_runner: FakeRunner
+) -> None:
+    fake_runner.result.timings = {"queue": 0, "acquire": 1, "upload": 12, "run": 7}
+    response = client.post("/v1/execute", json={"language": "python", "code": "print(1)"})
+    assert response.status_code == 200, response.text
+    header = response.headers["server-timing"]
+    assert header.startswith("queue;dur=0, acquire;dur=1, upload;dur=12, run;dur=7, total;dur=")
+    assert response.headers["timing-allow-origin"] == "*"
+    assert "timings" not in response.json()  # diagnostics live in the header, not the body
+
+
+def test_cors_exposes_server_timing_and_caches_preflight(client: TestClient) -> None:
+    preflight = client.options(
+        "/v1/execute",
+        headers={
+            "Origin": "https://demo.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert preflight.status_code == 200, preflight.text
+    assert preflight.headers["access-control-max-age"] == "7200"
+    response = client.post(
+        "/v1/execute",
+        json={"language": "python", "code": "print(1)"},
+        headers={"Origin": "https://demo.example"},
+    )
+    exposed = {
+        h.strip().lower() for h in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert {"x-request-id", "retry-after", "server-timing"} <= exposed
 
 
 def test_execute_uses_default_timeout_and_clamps(fake_runner: FakeRunner) -> None:

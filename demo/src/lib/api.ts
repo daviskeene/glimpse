@@ -23,6 +23,31 @@ export interface ExecuteResponse {
   compile_stderr?: string;
 }
 
+/** Server-side phase timings from the `Server-Timing` header, in milliseconds. */
+export interface ServerTiming {
+  [phase: string]: number;
+}
+
+/** Parse `queue;dur=0, upload;dur=98, ..., total;dur=281` into phase → ms (order kept). */
+export function parseServerTiming(header: string | null): ServerTiming | null {
+  if (!header) return null;
+  const timing: ServerTiming = {};
+  for (const entry of header.split(",")) {
+    const [name, ...params] = entry.trim().split(";");
+    const dur = params.map((p) => p.trim()).find((p) => p.startsWith("dur="));
+    if (!name || !dur) continue;
+    const ms = Number(dur.slice(4));
+    if (Number.isFinite(ms)) timing[name] = ms;
+  }
+  return Object.keys(timing).length ? timing : null;
+}
+
+export interface ExecuteOutcome {
+  result: ExecuteResponse;
+  /** Present when the server sent a `Server-Timing` header. */
+  timing: ServerTiming | null;
+}
+
 export interface LanguageInfo {
   id: string;
   name: string;
@@ -75,7 +100,7 @@ export class NetworkError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function send<T>(path: string, init?: RequestInit): Promise<{ data: T; response: Response }> {
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
@@ -100,11 +125,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const retry = response.headers.get("retry-after");
     throw new ApiError(response.status, code, message, retry ? Number(retry) : undefined);
   }
-  return (await response.json()) as T;
+  return { data: (await response.json()) as T, response };
 }
 
-export const execute = (body: ExecuteRequest) =>
-  request<ExecuteResponse>("/v1/execute", { method: "POST", body: JSON.stringify(body) });
+const request = <T,>(path: string, init?: RequestInit): Promise<T> => send<T>(path, init).then((r) => r.data);
+
+export async function execute(body: ExecuteRequest): Promise<ExecuteOutcome> {
+  const { data, response } = await send<ExecuteResponse>("/v1/execute", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return { result: data, timing: parseServerTiming(response.headers.get("server-timing")) };
+}
 
 export const listLanguages = () => request<LanguageInfo[]>("/v1/languages");
 

@@ -255,12 +255,15 @@ export default function Docs() {
               ["413", "code_too_large · stdin_too_large · payload_too_large", "A size limit was exceeded."],
               ["422", "validation_error", "Malformed request; details lists the offending fields."],
               ["429", "rate_limited", "Per-client limit hit. Honour the Retry-After header."],
-              ["503", "no_capacity", "Every sandbox is busy. Honour Retry-After and try again."],
+              ["503", "no_capacity", "Every sandbox stayed busy for the whole queue window (a couple of seconds). Honour Retry-After and try again."],
               ["500", "runner_error", "The execution backend failed."],
             ]}
           />
           <p>
             Every response carries an <Code>X-Request-ID</Code> header (yours is echoed back if you send one).
+            Successful runs also carry <Code>Server-Timing</Code> with the server-side phases in milliseconds
+            (<Code>queue</Code>, <Code>acquire</Code>, <Code>upload</Code>, <Code>compile</Code>, <Code>run</Code>,{" "}
+            <Code>total</Code>); DevTools lists them in the request&rsquo;s Timing tab.
           </p>
         </Section>
 

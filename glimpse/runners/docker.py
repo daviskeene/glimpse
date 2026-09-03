@@ -5,8 +5,9 @@ image with every hardening knob Docker offers turned on (see ``_create_container
 and the container is destroyed afterwards -- nothing is ever reused between two
 requests. A small warm pool hides the container start-up latency.
 
-All docker-py calls are blocking, so they run on worker threads via
-``asyncio.to_thread``; the event loop is never blocked.
+All docker-py calls are blocking, so they run on the runner's own thread pool (see
+``_call``); the event loop is never blocked. An ``AdmissionGate`` bounds how many runs
+are in flight and queues a short burst instead of refusing it.
 """
 
 from __future__ import annotations
@@ -14,11 +15,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import functools
 import logging
 import threading
 import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
@@ -29,7 +33,6 @@ from ..config import Settings
 from ..execution import (
     KILLED_EXIT_CODE,
     ExecutionResult,
-    NoCapacityError,
     Phase,
     RunnerError,
     annotate_kill,
@@ -37,6 +40,7 @@ from ..execution import (
 )
 from ..languages import LANGUAGES, Language, render, render_env
 from ..source import prepare
+from .admission import AdmissionGate
 from .base import Runner, parse_version_output
 
 log = logging.getLogger("glimpse.docker")
@@ -56,6 +60,15 @@ UPLOAD_BATCH_CHARS = 1024 * 1024
 WATCHDOG_GRACE_S = 2.0
 # Extra seconds the async backstop waits beyond that before giving up on the thread.
 BACKSTOP_GRACE_S = 10.0
+# Seconds stop() lets in-progress pool refills finish (so their containers are disposed of
+# here rather than racing the final sweep) before cancelling the refill task.
+REFILL_STOP_GRACE_S = 30.0
+
+T = TypeVar("T")
+
+
+def _ms(seconds: float) -> int:
+    return int(seconds * 1000)
 
 
 @dataclass(slots=True)
@@ -85,23 +98,32 @@ class DockerRunner(Runner):
         self._wake = asyncio.Event()
         self._refill_task: asyncio.Task[None] | None = None
         self._disposals: set[asyncio.Task[None]] = set()
-        self._in_flight = 0
+        self._gate = AdmissionGate(
+            settings.sandbox_max_concurrency,
+            queue_size=settings.sandbox_queue_size,
+            queue_timeout_s=settings.sandbox_queue_timeout_s,
+        )
         self._creating = 0
         self._stopped = True
+        self._executor: ThreadPoolExecutor | None = None
         self._versions: dict[str, str] | None = None
         self._versions_lock = asyncio.Lock()
 
     # --- lifecycle ----------------------------------------------------------------
 
     async def start(self) -> None:
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=self._thread_count(), thread_name_prefix="glimpse-docker"
+            )
         if self._client is None:
             try:
-                self._client = await asyncio.to_thread(docker.from_env, timeout=180)
+                self._client = await self._call(docker.from_env, timeout=180)
             except DockerException as exc:
                 raise RunnerError(f"cannot connect to the Docker daemon: {exc}") from exc
         image = self.settings.sandbox_image
         try:
-            await asyncio.to_thread(self._client.images.get, image)
+            await self._call(self._client.images.get, image)
         except ImageNotFound:
             raise RunnerError(
                 f"sandbox image {image!r} not found; build it with `make sandbox` "
@@ -114,10 +136,14 @@ class DockerRunner(Runner):
         if self.settings.sandbox_pool_size > 0:
             self._refill_task = asyncio.create_task(self._refill_loop(), name="glimpse-refill")
         log.info(
-            "docker runner ready (image=%s pool=%d max_concurrency=%d mem=%dMiB cpus=%s pids=%d)",
+            "docker runner ready (image=%s pool=%d max_concurrency=%d queue=%d/%.1fs "
+            "threads=%d mem=%dMiB cpus=%s pids=%d)",
             image,
             self.settings.sandbox_pool_size,
             self.settings.sandbox_max_concurrency,
+            self.settings.sandbox_queue_size,
+            self.settings.sandbox_queue_timeout_s,
+            self._thread_count(),
             self.settings.sandbox_memory_mb,
             self.settings.sandbox_cpus,
             self.settings.sandbox_pids_limit,
@@ -125,12 +151,18 @@ class DockerRunner(Runner):
 
     async def stop(self) -> None:
         if self._stopped and self._client is None:
+            self._shutdown_executor()
             return
         self._stopped = True
+        self._wake.set()  # the refill loop exits as soon as it sees _stopped
         if self._refill_task is not None:
-            self._refill_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await self._refill_task
+            try:
+                await asyncio.wait_for(self._refill_task, timeout=REFILL_STOP_GRACE_S)
+            except TimeoutError:
+                # wait_for cancelled the task; the final sweep catches anything it leaked.
+                log.warning("pool refill did not finish in %.0fs", REFILL_STOP_GRACE_S)
+            except Exception:
+                log.exception("pool refill failed during stop")
             self._refill_task = None
         while True:
             try:
@@ -141,20 +173,48 @@ class DockerRunner(Runner):
         if self._disposals:
             await asyncio.gather(*self._disposals, return_exceptions=True)
         await self._sweep()
+        self._shutdown_executor()
+
+    def _shutdown_executor(self) -> None:
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
+            self._executor = None
+
+    def _thread_count(self) -> int:
+        s = self.settings
+        # One thread per in-flight run (held for the whole run), plus concurrent refills,
+        # disposals (up to one per finished run) and the odd health / version probe.
+        return min(64, max(8, 2 * s.sandbox_max_concurrency + s.sandbox_refill_concurrency + 4))
+
+    async def _call(self, fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+        """Run a blocking docker-py call on the runner's own thread pool.
+
+        ``asyncio.to_thread`` would use the loop's default executor, which has only
+        ``cpu_count + 4`` threads (six on a two-vCPU host). Every in-flight run holds a
+        thread for its whole duration, so on that shared pool a few concurrent runs starve
+        the refills and disposals that keep the sandbox pool warm.
+        """
+        if self._executor is None:
+            return await asyncio.to_thread(fn, *args, **kwargs)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, functools.partial(fn, *args, **kwargs))
 
     async def health(self) -> dict[str, Any]:
         if self._client is None or self._stopped:
             raise RunnerError("docker runner is not running")
         try:
-            await asyncio.to_thread(self._client.ping)
+            await self._call(self._client.ping)
         except DockerException as exc:
             raise RunnerError(f"docker daemon unreachable: {exc}") from exc
         return {
             "image": self.settings.sandbox_image,
             "pool_ready": self._pool.qsize(),
             "pool_size": self.settings.sandbox_pool_size,
-            "in_flight": self._in_flight,
+            "in_flight": self._gate.in_flight,
+            "queued": self._gate.queued,
             "max_concurrency": self.settings.sandbox_max_concurrency,
+            "queue_size": self.settings.sandbox_queue_size,
+            "queue_timeout_s": self.settings.sandbox_queue_timeout_s,
             "limits": {
                 "memory_mb": self.settings.sandbox_memory_mb,
                 "cpus": self.settings.sandbox_cpus,
@@ -171,22 +231,30 @@ class DockerRunner(Runner):
     ) -> ExecutionResult:
         if self._client is None or self._stopped:
             raise RunnerError("docker runner is not running")
-        if self._in_flight >= self.settings.sandbox_max_concurrency:
-            raise NoCapacityError(
-                f"at capacity ({self.settings.sandbox_max_concurrency} concurrent executions)"
-            )
-        self._in_flight += 1
-        try:
-            container = await self._acquire()
+        timings: dict[str, int] = {}
+        async with self._gate.slot() as waited_s:
+            timings["queue"] = _ms(waited_s)
+            started = time.monotonic()
+            container, pool_hit = await self._acquire()
+            timings["acquire"] = _ms(time.monotonic() - started)
+            if not pool_hit:
+                timings["create"] = timings["acquire"]  # the pool was empty: a cold start
             try:
                 budget = timeout_s + BACKSTOP_GRACE_S
                 if language.compile is not None:
                     budget += language.compile_timeout_s
                 progress = _Progress()
                 try:
-                    return await asyncio.wait_for(
-                        asyncio.to_thread(
-                            self._run, container, language, code, stdin, timeout_s, progress
+                    result = await asyncio.wait_for(
+                        self._call(
+                            self._run,
+                            container,
+                            language,
+                            code,
+                            stdin,
+                            timeout_s,
+                            progress,
+                            timings,
                         ),
                         timeout=budget,
                     )
@@ -194,8 +262,8 @@ class DockerRunner(Runner):
                     raise RunnerError(f"sandbox execution failed: {exc}") from exc
                 except TimeoutError:
                     log.error("backstop hit: killing sandbox %s", container.short_id)
-                    await asyncio.to_thread(self._kill, container)
-                    return ExecutionResult(
+                    await self._call(self._kill, container)
+                    result = ExecutionResult(
                         language=language.id,
                         phase=progress.phase,
                         exit_code=KILLED_EXIT_CODE,
@@ -204,57 +272,78 @@ class DockerRunner(Runner):
                         stderr="[glimpse] execution exceeded the hard time limit and was killed.\n",
                         duration_ms=int(budget * 1000),
                     )
+                result.timings = timings
+                return result
             finally:
                 self._dispose(container)
-        finally:
-            self._in_flight -= 1
 
     async def versions(self) -> dict[str, str]:
         async with self._versions_lock:
             if self._versions is None:
                 if self._client is None or self._stopped:
                     raise RunnerError("docker runner is not running")
-                container = await self._acquire()
+                container, _ = await self._acquire()
                 try:
-                    self._versions = await asyncio.to_thread(self._probe_versions, container)
+                    self._versions = await self._call(self._probe_versions, container)
                 finally:
                     self._dispose(container)
             return self._versions
 
     # --- pool ---------------------------------------------------------------------
 
-    async def _acquire(self) -> Container:
+    async def _acquire(self) -> tuple[Container, bool]:
+        """A warm container from the pool (``True``) or, if it is empty, a new one (``False``)."""
         try:
             container = self._pool.get_nowait()
         except asyncio.QueueEmpty:
             container = None
         self._wake.set()
         if container is not None:
-            return container
+            return container, True
         try:
-            return await asyncio.to_thread(self._create_container)
+            return await self._call(self._create_container), False
         except DockerException as exc:
             raise RunnerError(f"could not create sandbox container: {exc}") from exc
 
     async def _refill_loop(self) -> None:
+        """Keep ``sandbox_pool_size`` warm containers ready.
+
+        Up to ``sandbox_refill_concurrency`` are created at once: one at a time caps the
+        refill rate at roughly 1 / create-time, and above that request rate every run
+        would pay a cold start.
+        """
         target = self.settings.sandbox_pool_size
+        parallel = max(1, self.settings.sandbox_refill_concurrency)
         while not self._stopped:
             try:
-                while not self._stopped and self._pool.qsize() + self._creating < target:
-                    self._creating += 1
+                deficit = target - self._pool.qsize() - self._creating
+                if deficit > 0:
+                    n = min(deficit, parallel)
+                    self._creating += n
                     try:
-                        container = await asyncio.to_thread(self._create_container)
+                        created = await asyncio.gather(
+                            *(self._call(self._create_container) for _ in range(n)),
+                            return_exceptions=True,
+                        )
                     finally:
-                        self._creating -= 1
-                    if self._is_stopped():
-                        # stop() ran while we were creating: don't leak the container.
-                        self._dispose(container)
-                        break
-                    await self._pool.put(container)
+                        self._creating -= n
+                    failed = False
+                    for item in created:
+                        if isinstance(item, BaseException):
+                            failed = True
+                            log.error("failed to create a sandbox container: %s", item)
+                        elif self._is_stopped():
+                            # stop() ran while we were creating: don't leak the container.
+                            self._dispose(item)
+                        else:
+                            await self._pool.put(item)
+                    if failed:
+                        await asyncio.sleep(1.0)
+                    continue
             except asyncio.CancelledError:
                 raise
             except Exception:
-                log.exception("failed to create a sandbox container; retrying shortly")
+                log.exception("sandbox pool refill failed; retrying shortly")
                 await asyncio.sleep(1.0)
                 continue
             self._wake.clear()
@@ -266,21 +355,25 @@ class DockerRunner(Runner):
         return self._stopped
 
     def _dispose(self, container: Container) -> None:
-        task = asyncio.create_task(asyncio.to_thread(self._remove, container))
+        task = asyncio.create_task(self._call(self._remove, container))
         self._disposals.add(task)
         task.add_done_callback(self._disposals.discard)
 
     async def _sweep(self) -> None:
         """Remove every sandbox container on the daemon (leaks from a previous process)."""
         assert self._client is not None
-        removed = await asyncio.to_thread(self._sweep_sync)
+        removed = await self._call(self._sweep_sync)
         if removed:
             log.warning("removed %d leftover sandbox container(s)", removed)
 
     def _sweep_sync(self) -> int:
         assert self._client is not None
         count = 0
-        for container in self._client.containers.list(all=True, filters={"label": f"{LABEL}=1"}):
+        # sparse=True: don't inspect each container after listing it; one that another
+        # process (or this one's disposals) is removing at the same time would 404.
+        for container in self._client.containers.list(
+            all=True, sparse=True, filters={"label": f"{LABEL}=1"}
+        ):
             self._remove(container)
             count += 1
         return count
@@ -351,25 +444,32 @@ class DockerRunner(Runner):
         stdin: str,
         timeout_s: float,
         progress: _Progress | None = None,
+        timings: dict[str, int] | None = None,
     ) -> ExecutionResult:
+        """Upload, compile, run (on a worker thread). Phase wall times land in ``timings``."""
         progress = progress or _Progress()
+        timings = timings if timings is not None else {}
         prepared = prepare(language, code)
         src = f"{WORK}/{prepared.filename}"
         out = f"{WORK}/{language.artifact or 'main'}"
         stem = prepared.stem
         env = self._environment(language)
+        started = time.monotonic()
         self._upload(
             container,
             {prepared.filename: prepared.code.encode("utf-8"), "stdin": stdin.encode("utf-8")},
         )
+        timings["upload"] = _ms(time.monotonic() - started)
 
         compile_stderr = ""
         if language.compile is not None:
             progress.phase = "compile"
             argv = render(language.compile, work=WORK, tmp=TMP, src=src, out=out, stem=stem)
+            started = time.monotonic()
             outcome = self._exec(
                 container, argv, env, timeout_s=language.compile_timeout_s, stdin_file=None
             )
+            timings["compile"] = _ms(time.monotonic() - started)
             if outcome.exit_code != 0 or outcome.timed_out:
                 result = self._to_result(language, "compile", outcome)
                 annotate_kill(
@@ -382,7 +482,9 @@ class DockerRunner(Runner):
 
         progress.phase = "run"
         argv = render(language.run, work=WORK, tmp=TMP, src=src, out=out, stem=stem)
+        started = time.monotonic()
         outcome = self._exec(container, argv, env, timeout_s=timeout_s, stdin_file=STDIN_FILE)
+        timings["run"] = _ms(time.monotonic() - started)
         result = self._to_result(language, "run", outcome, compile_stderr=compile_stderr)
         annotate_kill(
             result,

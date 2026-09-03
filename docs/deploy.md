@@ -13,9 +13,11 @@ Cloudflare's free tier in front. Fixed cost (≈ €4–7/month), no cold starts
 only ever saturate the box — it cannot run up a bill.
 
 Sizing: 2 vCPU / 4 GB (Hetzner CAX11 arm64 or CX22 x86, DigitalOcean's $12 droplet, or
-Oracle Cloud's free ARM tier if you can get capacity) comfortably runs `pool=2,
-max_concurrency=4` at 512 MiB per sandbox — several runs per second. Scale up the instance
-before scaling out.
+Oracle Cloud's free ARM tier if you can get capacity) comfortably runs `pool=4,
+max_concurrency=4` at 512 MiB per sandbox — a few runs per second, with bursts absorbed by
+the 2 s admission queue rather than turned into `503`s. Each sandbox gets one CPU, so keep
+`max_concurrency` close to the vCPU count (more only slows every concurrent run down) and
+scale up the instance before scaling out.
 
 ### 1. Provision the VM (one CLI command)
 

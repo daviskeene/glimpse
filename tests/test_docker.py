@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from glimpse.execution import KILLED_EXIT_CODE, NoCapacityError
+from glimpse.execution import KILLED_EXIT_CODE, ExecutionResult, NoCapacityError
 from glimpse.languages import BY_ID, LANGUAGES
 from glimpse.runners.docker import BACKSTOP_GRACE_S, LABEL, DockerRunner
 from tests.conftest import make_settings
@@ -38,6 +38,7 @@ async def runner() -> AsyncIterator[DockerRunner]:
         runner="docker",
         sandbox_pool_size=1,
         sandbox_max_concurrency=3,
+        sandbox_queue_timeout_s=0,  # reject at capacity; queueing has its own tests below
         sandbox_memory_mb=512,
         sandbox_pids_limit=64,
     )
@@ -323,6 +324,64 @@ async def test_concurrency_and_capacity(runner: DockerRunner) -> None:
     assert all(r.stdout == "done\n" for r in ok)
 
 
+async def test_queue_absorbs_a_burst_and_reports_phase_timings() -> None:
+    settings = make_settings(
+        runner="docker",
+        sandbox_pool_size=0,
+        sandbox_max_concurrency=1,
+        sandbox_queue_size=4,
+        sandbox_queue_timeout_s=30,
+    )
+    queued = DockerRunner(settings)
+    await queued.start()
+    try:
+        code = "import time; time.sleep(0.3); print('done')"
+        tasks = [
+            asyncio.create_task(queued.execute(BY_ID["python"], code, stdin="", timeout_s=10))
+            for _ in range(3)
+        ]
+        results = await asyncio.gather(*tasks)
+        assert all(r.stdout == "done\n" for r in results), results
+        waits = sorted(r.timings["queue"] for r in results)
+        assert waits[0] == 0 and waits[-1] >= 250, waits  # the last one waited for two runs
+        for r in results:
+            assert {"queue", "acquire", "create", "upload", "run"} <= r.timings.keys(), r.timings
+            assert r.timings["run"] >= r.duration_ms >= 300
+            assert "compile" not in r.timings
+        health = await queued.health()
+        assert health["in_flight"] == 0 and health["queued"] == 0
+    finally:
+        await queued.stop()
+
+
+async def test_queue_timeout_refuses_without_wedging_the_slot() -> None:
+    settings = make_settings(
+        runner="docker",
+        sandbox_pool_size=0,
+        sandbox_max_concurrency=1,
+        sandbox_queue_size=4,
+        sandbox_queue_timeout_s=0.5,
+    )
+    small = DockerRunner(settings)
+    await small.start()
+    try:
+        code = "import time; time.sleep(2); print('done')"
+        tasks = [
+            asyncio.create_task(small.execute(BY_ID["python"], code, stdin="", timeout_s=10))
+            for _ in range(2)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        ok = [r for r in results if isinstance(r, ExecutionResult)]
+        rejected = [r for r in results if isinstance(r, NoCapacityError)]
+        assert len(ok) == 1 and len(rejected) == 1, results
+        assert "no slot freed up within 0.5s" in str(rejected[0])
+        # The slot is free again once the surviving run finishes.
+        again = await small.execute(BY_ID["python"], "print(1)", stdin="", timeout_s=5)
+        assert again.stdout == "1\n"
+    finally:
+        await small.stop()
+
+
 async def test_go_cache_trim_file_is_writable(runner: DockerRunner) -> None:
     """Go aborts builds when it cannot rewrite GOCACHE/trim.txt (once per day).
 
@@ -341,6 +400,7 @@ async def test_go_cache_trim_file_is_writable(runner: DockerRunner) -> None:
 async def test_health_and_versions(runner: DockerRunner) -> None:
     health = await runner.health()
     assert health["pool_size"] == 1
+    assert health["in_flight"] == 0 and health["queued"] == 0
     assert health["limits"]["network"] == "none"
     versions = await runner.versions()
     assert set(versions) == set(BY_ID)
