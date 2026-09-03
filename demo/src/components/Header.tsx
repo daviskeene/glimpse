@@ -1,57 +1,76 @@
-import { Link } from "react-router-dom";
-import { Code2, Book } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { NavLink } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { API_URL } from "@/lib/api";
+import { useHealth } from "@/lib/health";
 
-const Header = () => {
+function HealthChip() {
+  const state = useHealth();
+  const dot =
+    state.status === "ok"
+      ? state.health.runner === "unsafe-local"
+        ? "bg-coral"
+        : "bg-mint"
+      : state.status === "loading"
+        ? "bg-mist animate-pulse"
+        : "bg-coral";
+  const label =
+    state.status === "ok"
+      ? `${state.health.runner}${
+          state.health.details.pool_ready !== undefined
+            ? ` · ${state.health.details.pool_ready} warm`
+            : ""
+        }`
+      : state.status === "loading"
+        ? "checking API"
+        : "API unreachable";
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/75 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center">
-            <Link
-              to="/"
-              className="flex items-center space-x-2 text-xl font-bold text-gray-900 hover:text-gray-700 transition-colors"
-            >
-              <Code2 className="h-6 w-6" />
-              <span>Glimpse</span>
-            </Link>
-          </div>
+    <span
+      title={`${API_URL}/health`}
+      className="hidden items-center gap-2 rounded-full border border-paper-line bg-paper-deep/60 px-3 py-1 font-mono text-[11px] text-ink-soft sm:inline-flex"
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} aria-hidden />
+      {label}
+    </span>
+  );
+}
 
-          <nav className="flex items-center space-x-4">
-            <Link to="/docs">
-              <Button variant="default" className="flex items-center space-x-2">
-                <Book className="h-4 w-4" />
-                <span>Docs</span>
-              </Button>
-            </Link>
-            <a
-              href="https://github.com/daviskeene/glimpse"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button
-                variant="default"
-                className="hidden sm:flex items-center space-x-2"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>Star on GitHub</span>
-              </Button>
-            </a>
-          </nav>
-        </div>
+const link = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    "rounded-md px-2.5 py-1.5 text-sm transition-colors hover:text-ink",
+    isActive ? "text-ink font-medium" : "text-ink-soft",
+  );
+
+export default function Header() {
+  return (
+    <header className="sticky top-0 z-40 border-b border-paper-line/70 bg-paper/85 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <NavLink to="/" className="group flex items-center gap-2.5">
+          <span
+            aria-hidden
+            className="relative block h-5 w-5 rounded-[5px] bg-petrol shadow-[inset_0_0_0_1.5px_#245459]"
+          >
+            <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber transition-transform group-hover:scale-125" />
+          </span>
+          <span className="font-display text-[19px] font-semibold tracking-tight text-ink">Glimpse</span>
+        </NavLink>
+        <nav className="flex items-center gap-1 sm:gap-3">
+          <NavLink to="/" end className={link}>
+            Playground
+          </NavLink>
+          <NavLink to="/docs" className={link}>
+            Docs
+          </NavLink>
+          <a
+            href="https://github.com/daviskeene/glimpse"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md px-2.5 py-1.5 text-sm text-ink-soft transition-colors hover:text-ink"
+          >
+            GitHub
+          </a>
+          <HealthChip />
+        </nav>
       </div>
     </header>
   );
-};
-
-export default Header;
+}

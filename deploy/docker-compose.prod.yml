@@ -1,0 +1,43 @@
+# Production overlay for a public instance: TLS via Caddy, proxy-aware + global rate
+# limiting, log rotation. The API keeps its loopback-only port from the base file, so
+# only Caddy (on the compose network) and the host itself can reach it.
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+#
+# Requires GLIMPSE_DOMAIN in .env (see docs/deploy.md).
+services:
+  api:
+    environment:
+      GLIMPSE_TRUST_PROXY: "true"
+      GLIMPSE_CLIENT_IP_HEADER: ${GLIMPSE_CLIENT_IP_HEADER:-CF-Connecting-IP}
+      GLIMPSE_GLOBAL_RATE_LIMIT: ${GLIMPSE_GLOBAL_RATE_LIMIT:-600/minute}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      GLIMPSE_DOMAIN: ${GLIMPSE_DOMAIN:?set GLIMPSE_DOMAIN in .env, e.g. api.glimpse.example.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:

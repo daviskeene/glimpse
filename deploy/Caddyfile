@@ -1,0 +1,17 @@
+# Reverse proxy + automatic Let's Encrypt for the public API.
+# GLIMPSE_DOMAIN comes from the compose environment (.env at the repo root).
+{$GLIMPSE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	reverse_proxy api:8000
+
+	log {
+		output stdout
+		format console
+	}
+}
