@@ -1,6 +1,0 @@
-numpy
-pandas
-requests
-beautifulsoup4
-python-dateutil
-pytz

@@ -1,0 +1,51 @@
+#cloud-config
+# Cloud-init for a Glimpse production box (Ubuntu 24.04 on Hetzner Cloud).
+#
+# Placeholders (__GLIMPSE_DOMAIN__, __GLIMPSE_REPO__) are substituted by the create
+# command in docs/deploy.md before being passed as --user-data-from-file. First boot:
+# installs Docker, locks the firewall down to SSH+web, clones the repo and runs
+# `make prod` (build takes ~10 minutes on a small VM). Progress log on the server:
+# /var/log/cloud-init-output.log
+
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - make
+  - ufw
+  - unattended-upgrades
+
+write_files:
+  - path: /opt/glimpse.env
+    permissions: "0600"
+    content: |
+      GLIMPSE_DOMAIN=__GLIMPSE_DOMAIN__
+      GLIMPSE_RATE_LIMIT=30/minute
+      GLIMPSE_GLOBAL_RATE_LIMIT=600/minute
+      # Leave empty when clients hit Caddy directly (it sets X-Forwarded-For itself);
+      # set to CF-Connecting-IP only if Cloudflare's proxy is in front.
+      GLIMPSE_CLIENT_IP_HEADER=
+      GLIMPSE_SANDBOX_POOL_SIZE=2
+      GLIMPSE_SANDBOX_MAX_CONCURRENCY=4
+
+runcmd:
+  # Docker Engine + Compose plugin (official apt repository)
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - >
+    sh -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
+    > /etc/apt/sources.list.d/docker.list'
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  # Firewall: SSH + web only
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+  # Glimpse
+  - git clone __GLIMPSE_REPO__ /opt/glimpse
+  - mv /opt/glimpse.env /opt/glimpse/.env
+  - cd /opt/glimpse && make prod

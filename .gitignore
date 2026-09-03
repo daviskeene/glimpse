@@ -1,4 +1,19 @@
+# Python
 __pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local configuration (never commit credentials)
 .env
-submissions/
-java-kotlin-layer.zip
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

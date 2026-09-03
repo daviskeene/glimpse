@@ -1,0 +1,7 @@
+# Python libraries available to user code inside the sandbox (and the Lambda image).
+numpy
+pandas
+requests
+beautifulsoup4
+python-dateutil
+pytz

@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff + mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - name: Validate compose files (dev + prod overlay)
+        run: |
+          docker compose -f docker-compose.yml config -q
+          GLIMPSE_DOMAIN=api.example.com docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml config -q
+
+  test:
+    name: unit tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --frozen --python ${{ matrix.python }}
+      - run: uv run pytest -m "not docker"
+
+  docker:
+    name: sandbox image + integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: sandbox
+          tags: glimpse-sandbox:latest
+          load: true
+          cache-from: type=gha,scope=sandbox
+          cache-to: type=gha,scope=sandbox,mode=max
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: GLIMPSE_REQUIRE_DOCKER=1 uv run pytest -m docker -v
+      - name: No leaked sandbox containers
+        run: test -z "$(docker ps -aq --filter label=glimpse.sandbox=1)"
+
+  lambda:
+    name: lambda image smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Lambda image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: lambda/Dockerfile
+          tags: glimpse-lambda:latest
+          load: true
+          cache-from: type=gha,scope=lambda
+          cache-to: type=gha,scope=lambda,mode=max
+      - name: Invoke through the Runtime Interface Emulator
+        run: |
+          docker run -d --rm --name lambda -p 9000:8080 glimpse-lambda:latest
+          python3 lambda/smoke_test.py
+          docker stop lambda
+
+  demo:
+    name: demo build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: demo/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
