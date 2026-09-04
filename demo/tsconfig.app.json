@@ -12,6 +12,7 @@
 
     /* Bundler mode */
     "moduleResolution": "Bundler",
+    "customConditions": ["source"],
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",

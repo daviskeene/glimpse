@@ -150,6 +150,28 @@ Everything is a `GLIMPSE_*` environment variable (or a `.env` file — see
 | `GLIMPSE_SANDBOX_MEMORY_MB` / `CPUS` / `PIDS_LIMIT` | `512` / `1.0` / `128` | per-sandbox limits    |
 | `GLIMPSE_LAMBDA_FUNCTION_NAME`    | —                | required for the `lambda` runner               |
 
+## Clients
+
+**JavaScript / TypeScript** — two packages live in [`packages/`](packages/):
+[`@glimpse-run/client`](packages/client) is a zero-dependency typed client for browsers,
+Node 18+, Bun, Deno and edge runtimes; [`@glimpse-run/react`](packages/react) adds
+`GlimpseProvider`, `useRun`, `useLanguages` and `useHealth`. The demo site is built on both.
+
+```ts
+import { createClient, isSuccess } from "@glimpse-run/client";
+
+const glimpse = createClient({ baseUrl: "https://api.glimpse.daviskeene.com" });
+const run = await glimpse.execute({ language: "py", code: "print(input()[::-1])", stdin: "glimpse" });
+run.stdout;        // "espmilg\n"  — program failures are results too; see isSuccess(run)
+run.meta.timing;   // server-side phases from the Server-Timing header
+```
+
+Workspace commands, from the repository root: `npm ci`, `npm run build`, `npm test`
+(set `GLIMPSE_TEST_URL` to also run the client's integration tests against a live server).
+
+**Python** — `glimpse.client.GlimpseClient` / `AsyncGlimpseClient` and the `glimpse` CLI
+(see below), installable from this repository with `uv sync`.
+
 ## Development
 
 ```sh

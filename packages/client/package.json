@@ -1,0 +1,51 @@
+{
+  "name": "@glimpse-run/client",
+  "version": "0.1.0",
+  "description": "Typed, zero-dependency client for the Glimpse code execution API. Works in browsers, Node 18+, Bun, Deno and edge runtimes.",
+  "license": "MIT",
+  "author": "Davis Keene",
+  "homepage": "https://glimpse.daviskeene.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daviskeene/glimpse",
+    "directory": "packages/client"
+  },
+  "bugs": "https://github.com/daviskeene/glimpse/issues",
+  "keywords": [
+    "glimpse",
+    "code-execution",
+    "sandbox",
+    "run-code",
+    "llm",
+    "code-interpreter"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "glimpse-workspace",
+  "private": true,
+  "description": "npm workspace for Glimpse's JavaScript packages (packages/*). The demo site in demo/ links to them.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "clean": "rm -rf packages/*/dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.9",
+    "tsup": "^8.3.5",
+    "typescript": "~5.6.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

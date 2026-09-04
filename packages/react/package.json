@@ -1,0 +1,66 @@
+{
+  "name": "@glimpse-run/react",
+  "version": "0.1.0",
+  "description": "React hooks for the Glimpse code execution API: GlimpseProvider, useRun, useLanguages, useHealth.",
+  "license": "MIT",
+  "author": "Davis Keene",
+  "homepage": "https://glimpse.daviskeene.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daviskeene/glimpse",
+    "directory": "packages/react"
+  },
+  "bugs": "https://github.com/daviskeene/glimpse/issues",
+  "keywords": [
+    "glimpse",
+    "react",
+    "hooks",
+    "code-execution",
+    "sandbox",
+    "run-code"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.tsx",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@glimpse-run/client": "^0.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "jsdom": "^25.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

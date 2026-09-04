@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useLanguages } from "@glimpse-run/react";
 import { cn } from "@/lib/utils";
-import { API_URL, listLanguages, type LanguageInfo } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 import { LANGUAGES } from "@/lib/languages";
 import { describeLimits, useHealth } from "@/lib/health";
 import CodeBlock from "@/components/CodeBlock";
@@ -113,15 +114,9 @@ const Code = ({ children }: { children: React.ReactNode }) => (
 
 export default function Docs() {
   const [tab, setTab] = useState<keyof typeof snippets>("curl");
-  const [live, setLive] = useState<LanguageInfo[] | null>(null);
+  const { languages: live } = useLanguages();
   const health = useHealth();
   const limits = describeLimits(health);
-
-  useEffect(() => {
-    listLanguages()
-      .then(setLive)
-      .catch(() => setLive(null));
-  }, []);
 
   const languageRows = LANGUAGES.map((l) => {
     const info = live?.find((x) => x.id === l.id);
