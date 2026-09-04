@@ -11,7 +11,9 @@ const url = process.env.GLIMPSE_TEST_URL;
 describe.skipIf(!url)("against a live server", () => {
   const client = createClient({ baseUrl: url, retry: { maxAttempts: 3 } });
 
-  it("reports health and languages", async () => {
+  // The first /v1/languages call makes the server probe every toolchain's version, which
+  // can take a few seconds on a cold runner; later calls are cached.
+  it("reports health and languages", { timeout: 60_000 }, async () => {
     const health = await client.health();
     expect(health.status).toBe("ok");
     const languages = await client.languages();

@@ -111,6 +111,7 @@ jobs:
           GLIMPSE_RUNNER=unsafe-local GLIMPSE_RATE_LIMIT=off \
             nohup uv run glimpse serve --host 127.0.0.1 --port 8000 > server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8000/v1/languages > /dev/null  # warm the toolchain version probe
       - run: npm test
         env:
           GLIMPSE_TEST_URL: http://127.0.0.1:8000
