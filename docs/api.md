@@ -32,10 +32,19 @@ Every non-2xx response has the shape
 | 422 | `validation_error` | `details` is a list of `{loc, msg, type}` |
 | 429 | `rate_limited` | per-client or (message says so) global limit; `Retry-After` header in seconds |
 | 500 | `runner_error` / `internal_error` | |
-| 503 | `no_capacity` / `unhealthy` | `Retry-After: 1` — all sandboxes busy, try again |
+| 503 | `no_capacity` / `unhealthy` | `Retry-After: 1` — every sandbox stayed busy for the whole queue window (default 2 s); try again |
 
 API responses carry an `X-Request-ID` header (yours is echoed if you send one; CORS
 preflights and last-resort 500s may lack it).
+
+Successful `POST /v1/execute` responses also carry a `Server-Timing` header with the
+server-side phases in milliseconds, for example
+`Server-Timing: queue;dur=0, acquire;dur=1, upload;dur=98, run;dur=140, total;dur=281`:
+`queue` (waited for a free execution slot), `acquire` (got a sandbox; `create` appears as
+well when the warm pool was empty and one had to be started), `upload`, `compile`
+(compiled languages only), `run` and `total`. Browsers list them in DevTools' Timing tab
+(the API sends `Timing-Allow-Origin` for its CORS origins); the demo shows `total` next
+to the round trip so you can tell server time from network time.
 
 ## `POST /v1/execute`
 
@@ -124,8 +133,9 @@ program that reads one line from stdin. `version` is `null` if the backend canno
 
 ```json
 {"status": "ok", "runner": "docker", "version": "1.0.0",
- "details": {"image": "glimpse-sandbox", "pool_ready": 2, "pool_size": 2, "in_flight": 0,
-             "max_concurrency": 4, "limits": {"memory_mb": 512, "cpus": 1.0, "pids": 128, "tmpfs_mb": 64, "network": "none"}}}
+ "details": {"image": "glimpse-sandbox", "pool_ready": 4, "pool_size": 4, "in_flight": 0,
+             "queued": 0, "max_concurrency": 4, "queue_size": 16, "queue_timeout_s": 2.0,
+             "limits": {"memory_mb": 512, "cpus": 1.0, "pids": 128, "tmpfs_mb": 64, "network": "none"}}}
 ```
 
 `503 unhealthy` if the backend is unreachable.

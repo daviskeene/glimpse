@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import IO, Any, Literal
 
 from .languages import Language, render, render_env
@@ -36,7 +36,7 @@ ENV_PASSTHROUGH = ("PATH", "JAVA_HOME", "GOROOT", "GOCACHE", "LD_LIBRARY_PATH")
 
 @dataclass(slots=True)
 class ExecutionResult:
-    """What every backend returns. Mirrors ``models.ExecuteResponse`` 1:1."""
+    """What every backend returns. ``to_dict()`` mirrors ``models.ExecuteResponse`` 1:1."""
 
     language: str
     phase: Phase
@@ -47,9 +47,17 @@ class ExecutionResult:
     duration_ms: int
     truncated: bool = False
     compile_stderr: str = ""
+    timings: dict[str, int] = field(default_factory=dict, compare=False)
+    """Backend phase wall times in ms (``queue``, ``acquire``, ``upload``, ``compile``, ``run``).
+
+    Diagnostics rather than part of the result: the API surfaces them as a ``Server-Timing``
+    header and in its log line, never in the JSON body.
+    """
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        del data["timings"]
+        return data
 
     @property
     def ok(self) -> bool:

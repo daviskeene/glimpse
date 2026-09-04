@@ -48,10 +48,15 @@ Lifecycle:
 
 1. `start()` connects to the daemon, verifies the sandbox image exists, removes any container
    labelled `glimpse.sandbox=1` left over from a previous process, and starts a background task
-   that keeps `GLIMPSE_SANDBOX_POOL_SIZE` warm containers in an `asyncio.Queue`.
+   that keeps `GLIMPSE_SANDBOX_POOL_SIZE` warm containers in an `asyncio.Queue`, creating up
+   to `GLIMPSE_SANDBOX_REFILL_CONCURRENCY` at a time.
 2. `execute()`:
-   - rejects immediately with `NoCapacityError` (→ `503` + `Retry-After`) if
-     `GLIMPSE_SANDBOX_MAX_CONCURRENCY` executions are already in flight;
+   - takes a slot from the `AdmissionGate` (`runners/admission.py`): at most
+     `GLIMPSE_SANDBOX_MAX_CONCURRENCY` executions run at once, and when all slots are busy
+     the request waits up to `GLIMPSE_SANDBOX_QUEUE_TIMEOUT_S` (with at most
+     `GLIMPSE_SANDBOX_QUEUE_SIZE` waiting) before failing with `NoCapacityError`
+     (→ `503` + `Retry-After`). A slot is held for the whole run, sleeping programs
+     included;
    - takes a warm container from the pool (or creates one on demand);
    - on a worker thread: runs `glimpse.source.prepare()` (BOM/CRLF, Java package strip +
      class name, Go package), writes the file and `stdin` into the container's `/work`
@@ -59,8 +64,12 @@ Lifecycle:
      compile step (if any) and then the program, each as
      `glimpse-run -t <seconds> [-i /work/stdin] -- <argv...>`, streaming demultiplexed
      stdout/stderr with a byte cap and reading the exit code from `exec_inspect`;
+   - records the wall time of each phase (`queue`, `acquire` / `create`, `upload`,
+     `compile`, `run`) in `ExecutionResult.timings`; the API returns them as a
+     `Server-Timing` header and logs them;
    - **always** kills and removes the container afterwards and wakes the refill task.
-3. `stop()` cancels the refill task, removes pooled containers and sweeps the label again.
+3. `stop()` lets an in-progress refill finish (cancelling it after 30 s), removes pooled
+   containers and sweeps the label again.
 
 `glimpse-run` (`sandbox/glimpse-run/main.go`, ~80 lines, built into the sandbox image) is
 the in-container supervisor: it starts the program in its own process group with stdin
@@ -73,7 +82,10 @@ backstop wraps the whole worker-thread call. Exit 124 at or after the deadline �
 watchdog kill — is reported as `timed_out` (with the documented `exit_code` 137); any
 other 137 is the OOM killer or the pids limit.
 
-Every docker-py call runs via `asyncio.to_thread`, so the event loop never blocks.
+Every docker-py call runs on the runner's own thread pool (sized from the concurrency
+settings), so the event loop never blocks. The loop's default executor would only have
+`cpu_count + 4` threads, and since every in-flight run holds one for its whole duration,
+a few concurrent runs there starve the refills and disposals that keep the pool warm.
 
 Why no `put_archive`? Docker refuses `PUT /containers/{id}/archive` for containers with a
 read-only rootfs, even into a tmpfs. Files are therefore written by a short `sh` exec that

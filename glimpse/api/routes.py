@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 
 from .. import __version__, languages
 from ..config import Settings
@@ -46,6 +46,11 @@ def _settings(request: Request) -> Settings:
 def _runner(request: Request) -> Runner:
     runner: Runner = request.app.state.runner
     return runner
+
+
+def server_timing(timings: dict[str, int]) -> str:
+    """Render phase timings as a ``Server-Timing`` header value: ``name;dur=<ms>, ...``."""
+    return ", ".join(f"{name};dur={ms}" for name, ms in timings.items())
 
 
 @router.get("/", include_in_schema=False)
@@ -109,12 +114,15 @@ async def list_languages(request: Request) -> list[LanguageInfo]:
     tags=["v1"],
     summary="Run a code snippet",
 )
-async def execute(body: ExecuteRequest, request: Request) -> ExecuteResponse:
+async def execute(body: ExecuteRequest, request: Request, response: Response) -> ExecuteResponse:
     """Compile (if needed) and run a snippet in an isolated sandbox.
 
     Failures of the *program* (compile errors, non-zero exits, timeouts) are returned
     as `200` results — inspect `phase`, `exit_code` and `timed_out`. Only failures of
     the *service* produce error status codes.
+
+    The `Server-Timing` response header breaks the server-side time down by phase
+    (`queue`, `acquire`, `upload`, `compile`, `run`, `total`, in milliseconds).
     """
     settings = _settings(request)
     runner = _runner(request)
@@ -138,14 +146,18 @@ async def execute(body: ExecuteRequest, request: Request) -> ExecuteResponse:
 
     started = time.monotonic()
     result = await runner.execute(language, body.code, stdin=body.stdin, timeout_s=timeout_s)
+    total_ms = int((time.monotonic() - started) * 1000)
+    response.headers["Server-Timing"] = server_timing({**result.timings, "total": total_ms})
     log.info(
-        "execute language=%s phase=%s exit=%d timed_out=%s duration_ms=%d total_ms=%d runner=%s",
+        "execute language=%s phase=%s exit=%d timed_out=%s duration_ms=%d total_ms=%d "
+        "timings=%s runner=%s",
         result.language,
         result.phase,
         result.exit_code,
         result.timed_out,
         result.duration_ms,
-        int((time.monotonic() - started) * 1000),
+        total_ms,
+        ",".join(f"{name}={ms}" for name, ms in result.timings.items()) or "-",
         runner.name,
     )
     return ExecuteResponse(**result.to_dict())

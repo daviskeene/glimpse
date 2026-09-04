@@ -4,7 +4,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { ChevronDown, ChevronRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { API_URL, ApiError, NetworkError, execute, type ExecuteResponse } from "@/lib/api";
+import { API_URL, ApiError, NetworkError, execute, type ExecuteResponse, type ServerTiming } from "@/lib/api";
 import { LANGUAGES, DEFAULT_STDIN, byId } from "@/lib/languages";
 import { editorTheme } from "@/lib/editorTheme";
 import { describeLimits, useHealth } from "@/lib/health";
@@ -13,7 +13,7 @@ import { CopyButton } from "@/components/CodeBlock";
 type RunState =
   | { status: "idle" }
   | { status: "running"; startedAt: number }
-  | { status: "done"; result: ExecuteResponse; roundTripMs: number }
+  | { status: "done"; result: ExecuteResponse; roundTripMs: number; timing: ServerTiming | null }
   | { status: "error"; error: ApiError | NetworkError };
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -28,6 +28,14 @@ function verdict(result: ExecuteResponse): { tone: "ok" | "warn" | "bad"; word: 
 
 const toneDot = { ok: "bg-mint", warn: "bg-amber", bad: "bg-coral", idle: "bg-mist", running: "bg-amber" };
 const toneText = { ok: "text-mint", warn: "text-amber", bad: "text-coral", idle: "text-mist", running: "text-amber" };
+
+/** `queue 0 ms · acquire 1 ms · upload 98 ms · run 140 ms` (everything but the total). */
+function describeTiming(timing: ServerTiming): string {
+  return Object.entries(timing)
+    .filter(([phase]) => phase !== "total")
+    .map(([phase, ms]) => `${phase} ${ms} ms`)
+    .join(" · ");
+}
 
 function explain(error: ApiError | NetworkError): string {
   if (error instanceof NetworkError) {
@@ -74,8 +82,8 @@ export default function Playground() {
     setState({ status: "running", startedAt });
     setShowRaw(false);
     try {
-      const result = await execute({ language, code: source, stdin: input, timeout_s: timeout });
-      setState({ status: "done", result, roundTripMs: Math.round(performance.now() - startedAt) });
+      const { result, timing } = await execute({ language, code: source, stdin: input, timeout_s: timeout });
+      setState({ status: "done", result, roundTripMs: Math.round(performance.now() - startedAt), timing });
     } catch (err) {
       if (err instanceof ApiError || err instanceof NetworkError) setState({ status: "error", error: err });
       else setState({ status: "error", error: new NetworkError(String(err)) });
@@ -165,6 +173,7 @@ export default function Playground() {
         r.phase === "compile" ? "stopped at compile" : null,
       ].filter((b): b is string => !!b),
       roundTrip: state.roundTripMs,
+      timing: state.timing,
     };
   })();
 
@@ -421,6 +430,11 @@ export default function Playground() {
                   {b}
                 </span>
               ))}
+            {"timing" in readout && readout.timing?.total !== undefined && (
+              <span className="text-mist/70" title={describeTiming(readout.timing)}>
+                server {readout.timing.total} ms
+              </span>
+            )}
             {"roundTrip" in readout && readout.roundTrip !== undefined && (
               <span className="text-mist/70">{(readout.roundTrip / 1000).toFixed(2)} s round trip</span>
             )}

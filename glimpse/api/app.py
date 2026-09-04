@@ -29,6 +29,8 @@ Run untrusted code snippets in isolated sandboxes.
 * `GET /health` — backend status.
 
 Every error response has the shape `{"error": {"code": "...", "message": "..."}}`.
+Successful `/v1/execute` responses carry a `Server-Timing` header with the server-side
+phase times.
 """
 
 
@@ -101,6 +103,9 @@ def create_app(settings: Settings | None = None, runner: Runner | None = None) -
     # Raw JSON is larger than the fields it carries (escapes can inflate ~6x worst case);
     # this guard is a DoS backstop, the precise limits are enforced after parsing.
     max_body = 6 * (settings.max_code_bytes + settings.max_stdin_bytes) + 16384
+    # Lets browsers show the full timing breakdown (connection phases and the
+    # Server-Timing entries) for cross-origin calls, e.g. the demo's fetch in DevTools.
+    timing_allow_origin = ", ".join(settings.cors_origins)
 
     @app.middleware("http")
     async def request_id_and_body_guard(
@@ -122,6 +127,8 @@ def create_app(settings: Settings | None = None, runner: Runner | None = None) -
         else:
             response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        if timing_allow_origin:
+            response.headers["Timing-Allow-Origin"] = timing_allow_origin
         return response
 
     app.add_middleware(BodyLimitMiddleware, max_body=max_body)
@@ -131,7 +138,8 @@ def create_app(settings: Settings | None = None, runner: Runner | None = None) -
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID", "Retry-After"],
+        expose_headers=["X-Request-ID", "Retry-After", "Server-Timing"],
+        max_age=7200,  # preflight cache; browsers cap it around 2 h anyway
     )
     register_error_handlers(app)
     app.include_router(router)

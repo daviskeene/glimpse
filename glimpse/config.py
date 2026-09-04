@@ -52,8 +52,17 @@ class Settings(BaseSettings):
 
     # --- docker runner --------------------------------------------------------
     sandbox_image: str = "glimpse-sandbox"
-    sandbox_pool_size: int = 2
+    sandbox_pool_size: int = 4
+    """Warm containers kept ready; idle ones cost ~1 MiB, so match ``sandbox_max_concurrency``."""
+    sandbox_refill_concurrency: int = 2
+    """How many pool containers are created at once while the pool is below target."""
     sandbox_max_concurrency: int = 4
+    """Executions in flight at once. Rule of thumb: one per host vCPU (each sandbox gets
+    ``sandbox_cpus``); more than that just makes concurrent runs slower."""
+    sandbox_queue_timeout_s: float = 2.0
+    """How long a request waits for a free slot before ``503``; ``0`` rejects immediately."""
+    sandbox_queue_size: int = 16
+    """Requests that may wait for a slot at once; beyond that, ``503`` immediately."""
     sandbox_memory_mb: int = 512
     sandbox_cpus: float = 1.0
     sandbox_pids_limit: int = 128
