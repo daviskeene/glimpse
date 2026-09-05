@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.2",
+    "@glimpse-run/client": "file:../packages/client",
+    "@glimpse-run/react": "file:../packages/react",
     "@codemirror/lang-go": "^6.0.1",
     "@codemirror/lang-java": "^6.0.1",
     "@codemirror/lang-javascript": "^6.2.2",

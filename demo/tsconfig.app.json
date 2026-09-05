@@ -12,6 +12,10 @@
 
     /* Bundler mode */
     "moduleResolution": "Bundler",
+    "customConditions": ["source"],
+    /* The packages are symlinked from ../packages; resolve their imports (react, each
+       other) through demo/node_modules rather than their real path, which has no install. */
+    "preserveSymlinks": true,
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",

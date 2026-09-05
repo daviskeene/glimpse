@@ -4,7 +4,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { ChevronDown, ChevronRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { API_URL, ApiError, NetworkError, execute, type ExecuteResponse, type ServerTiming } from "@/lib/api";
+import { API_URL, GlimpseApiError, GlimpseError, client, type ExecuteResponse, type ServerTiming } from "@/lib/api";
 import { LANGUAGES, DEFAULT_STDIN, byId } from "@/lib/languages";
 import { editorTheme } from "@/lib/editorTheme";
 import { describeLimits, useHealth } from "@/lib/health";
@@ -14,7 +14,7 @@ type RunState =
   | { status: "idle" }
   | { status: "running"; startedAt: number }
   | { status: "done"; result: ExecuteResponse; roundTripMs: number; timing: ServerTiming | null }
-  | { status: "error"; error: ApiError | NetworkError };
+  | { status: "error"; error: GlimpseError };
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const RUN_KEY = isMac ? "⌘↵" : "Ctrl+↵";
@@ -37,8 +37,8 @@ function describeTiming(timing: ServerTiming): string {
     .join(" · ");
 }
 
-function explain(error: ApiError | NetworkError): string {
-  if (error instanceof NetworkError) {
+function explain(error: GlimpseError): string {
+  if (!(error instanceof GlimpseApiError)) {
     return `${error.message}\n\nStart one locally with:\n  git clone https://github.com/daviskeene/glimpse && cd glimpse\n  docker compose up\n\nor build the demo with VITE_GLIMPSE_API_URL pointing at a running server.`;
   }
   switch (error.code) {
@@ -82,11 +82,11 @@ export default function Playground() {
     setState({ status: "running", startedAt });
     setShowRaw(false);
     try {
-      const { result, timing } = await execute({ language, code: source, stdin: input, timeout_s: timeout });
-      setState({ status: "done", result, roundTripMs: Math.round(performance.now() - startedAt), timing });
+      const { meta, ...result } = await client.execute({ language, code: source, stdin: input, timeout_s: timeout });
+      setState({ status: "done", result, roundTripMs: Math.round(performance.now() - startedAt), timing: meta.timing });
     } catch (err) {
-      if (err instanceof ApiError || err instanceof NetworkError) setState({ status: "error", error: err });
-      else setState({ status: "error", error: new NetworkError(String(err)) });
+      if (err instanceof GlimpseError) setState({ status: "error", error: err });
+      else setState({ status: "error", error: new GlimpseError(String(err)) });
     } finally {
       inFlight.current = false;
     }
@@ -157,8 +157,8 @@ export default function Playground() {
       const e = state.error;
       return {
         tone: "bad" as const,
-        main: e instanceof ApiError ? `${e.status} ${e.code}` : "unreachable",
-        extra: e instanceof ApiError ? undefined : API_URL,
+        main: e instanceof GlimpseApiError ? `${e.status} ${e.code}` : "unreachable",
+        extra: e instanceof GlimpseApiError ? undefined : API_URL,
       };
     }
     const r = state.result;
